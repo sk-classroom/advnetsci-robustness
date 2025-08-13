@@ -1,0 +1,13 @@
+igraph
+scikit-learn
+numpy
+scipy
+pandas
+networkx
+seaborn
+matplotlib
+ipykernel
+tqdm
+black
+nbconvert
+jupytext
