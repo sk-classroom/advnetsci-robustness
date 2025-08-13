@@ -1,0 +1,97 @@
+name: Autograding Tests
+'on':
+- push
+- repository_dispatch
+permissions:
+  checks: write
+  actions: read
+  contents: write
+jobs:
+  run-autograding-tests:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-classroom[bot]'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python environment
+      run: |
+        # Install uv
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+
+        # Add uv to PATH for current session and future steps
+        export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+        # Setup virtual environment
+        uv venv
+        echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
+        echo "$PWD/.venv/bin" >> $GITHUB_PATH
+        source .venv/bin/activate
+        uv pip install -r requirements.txt
+
+    - name: Quiz Challenge
+      id: quiz-challenge
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: Quiz Challenge
+        setup-command: echo "Environment already set up"
+        command: |
+          if [ -z "${{ secrets.CHAT_API }}" ]; then
+            echo "CHAT_API secret not found"
+            exit 1
+          fi
+          ./grading/run_quiz_test.sh \
+            --config ./grading/config.toml \
+            --quiz-file ./assignment/quiz.toml \
+            --api-key ${{ secrets.CHAT_API }} \
+            --output ./assignment/quiz_results.json
+        timeout: 10
+        max-score: 5
+
+    - name: Task 1
+      id: task-1
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: Assignment - Test 1
+        setup-command: echo "Environment already set up"
+        command: uv run tests/test_01.py
+        timeout: 10
+        max-score: 10
+
+    - name: Task 2
+      id: task-2
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: Assignment - Test 2
+        setup-command: echo "Environment already set up"
+        command: uv run tests/test_02.py
+        timeout: 10
+        max-score: 5
+
+    - name: Commit and push quiz results
+      if: always()
+      run: |
+        if [ -f "./assignment/quiz_results.json" ]; then
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add assignment/quiz_results.json
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Add quiz results from automated grading" || echo "Commit failed, possibly due to no changes"
+            git push || echo "Push failed, possibly due to conflicts"
+          fi
+        else
+          echo "No quiz results file found at ./assignment/quiz_results.json"
+        fi
+
+    - name: Autograding Reporter
+      uses: classroom-resources/autograding-grading-reporter@v1
+      env:
+        TASK-1_RESULTS: "${{steps.task-1.outputs.result}}"
+        TASK-2_RESULTS: "${{steps.task-2.outputs.result}}"
+        QUIZ-CHALLENGE_RESULTS: "${{steps.quiz-challenge.outputs.result}}"
+      with:
+        runners: task-1,task-2,quiz-challenge
