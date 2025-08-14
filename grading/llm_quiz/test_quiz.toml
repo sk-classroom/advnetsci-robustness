@@ -1,9 +1,9 @@
-title = "Test Quiz for DSPy Implementation"
+title = "Test Quiz for DSPy Implementation - Small World Networks"
 
 [[questions]]
-question = "What is 2 + 2?"
-answer = "4"
+question = "In the small-world model, if you start with a regular lattice and rewire edges with probability p=0.1, what specific mathematical relationship exists between the clustering coefficient decrease and the path length decrease, and why does this create the characteristic 'small-world' regime?"
+answer = "The clustering coefficient decreases approximately as C(p) ≈ C(0)(1-p)^3 for small p, while path length decreases much faster as L(p) ≈ L(0)/p for small p. This creates the small-world regime because clustering remains relatively high while path length drops dramatically, giving networks that are both highly clustered (like regular networks) and have short paths (like random networks)."
 
 [[questions]]
-question = "What is the capital of France?"
-answer = "Paris"
+question = "Consider a small-world network where the rewiring probability p transitions from 0.01 to 0.1. If the original regular lattice has clustering coefficient 0.75, what is the expected clustering coefficient at p=0.1, and how does this relate to the concept of 'local worlds' in network analysis?"
+answer = "Using C(p) ≈ C(0)(1-p)^3, the clustering coefficient at p=0.1 would be approximately 0.75 × (0.9)^3 ≈ 0.55. This relates to 'local worlds' because the rewiring creates shortcuts between distant parts of the network while preserving most local triangular structures, maintaining the highly clustered local neighborhoods that define small-world behavior."

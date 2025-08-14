@@ -101,29 +101,39 @@ class DSPyQuizChallenge:
     
     def _create_dspy_lm(self):
         """Create a DSPy LM wrapper for the existing API endpoint."""
-        # For now, we'll create a simple DSPy LM that works with OpenAI-compatible APIs
-        # This assumes the base_url is OpenAI-compatible
-        if "openrouter" in self.base_url.lower():
-            # OpenRouter
-            return dspy.LM(
-                model=self.evaluator_model,
-                api_base=self.base_url,
-                api_key=self.api_key
-            )
-        elif "ollama" in self.base_url.lower() or ":11434" in self.base_url.lower():
-            # Ollama
-            return dspy.LM(
-                model=self.evaluator_model,
-                api_base=self.base_url,
-                api_key=self.api_key  # Ollama might not need this but we'll include it
-            )
-        else:
-            # Default OpenAI-compatible
-            return dspy.LM(
-                model=self.evaluator_model,
-                api_base=self.base_url,
-                api_key=self.api_key
-            )
+        logger.debug(f"Creating DSPy LM with base_url: {self.base_url}, evaluator_model: {self.evaluator_model}")
+        
+        try:
+            if "openrouter" in self.base_url.lower():
+                # OpenRouter
+                lm = dspy.LM(
+                    model=self.evaluator_model,
+                    api_base=self.base_url,
+                    api_key=self.api_key
+                )
+                logger.debug("Created OpenRouter DSPy LM")
+                return lm
+            elif "ollama" in self.base_url.lower() or ":11434" in self.base_url.lower():
+                # Ollama
+                lm = dspy.LM(
+                    model=self.evaluator_model,
+                    api_base=self.base_url,
+                    api_key=self.api_key
+                )
+                logger.debug("Created Ollama DSPy LM")
+                return lm
+            else:
+                # Default OpenAI-compatible
+                lm = dspy.LM(
+                    model=self.evaluator_model,
+                    api_base=self.base_url,
+                    api_key=self.api_key
+                )
+                logger.debug("Created OpenAI-compatible DSPy LM")
+                return lm
+        except Exception as e:
+            logger.error(f"Error creating DSPy LM: {e}")
+            raise
     
     def _load_context_from_urls_file(self, urls_file: str) -> Optional[str]:
         """Load context content from URLs file."""
@@ -212,11 +222,13 @@ class DSPyQuizChallenge:
             
             try:
                 # Step 1: Validate the question using DSPy
+                logger.debug(f"Validating question {question.number} with DSPy...")
                 validation = self.question_validator(
                     question=question.question,
                     answer=question.answer,
                     context_content=self.context_content
                 )
+                logger.debug(f"Validation result: valid={validation.is_valid}, reason={validation.reason}")
                 
                 if not validation.is_valid:
                     logger.warning(f"Question {question.number} failed validation: {validation.reason}")
@@ -238,18 +250,22 @@ class DSPyQuizChallenge:
                 
                 # Step 2: Get LLM answer using DSPy
                 # We need to switch to the quiz model for this step
+                logger.debug(f"Getting LLM answer for question {question.number} using {self.quiz_model}...")
                 with dspy.context(lm=dspy.LM(model=self.quiz_model, api_base=self.base_url, api_key=self.api_key)):
                     llm_response = self.question_answerer(
                         question=question.question,
                         context_content=self.context_content
                     )
+                logger.debug(f"LLM answer: {llm_response.answer[:100]}...")
                 
                 # Step 3: Evaluate the answer using DSPy
+                logger.debug(f"Evaluating answer for question {question.number}...")
                 evaluation = self.answer_evaluator(
                     question=question.question,
                     correct_answer=question.answer,
                     llm_answer=llm_response.answer
                 )
+                logger.debug(f"Evaluation: verdict={evaluation.verdict}, student_wins={evaluation.student_wins}")
                 
                 # Update counters
                 if evaluation.student_wins:
@@ -269,6 +285,7 @@ class DSPyQuizChallenge:
                 
             except Exception as e:
                 logger.error(f"Error processing question {question.number}: {e}")
+                logger.debug(f"Full exception details:", exc_info=True)
                 result = QuizResult(
                     question=question,
                     llm_answer="System error",
@@ -289,6 +306,7 @@ class DSPyQuizChallenge:
         
         # Generate feedback using DSPy
         try:
+            logger.debug("Generating feedback with DSPy...")
             feedback = self.feedback_generator(
                 total_questions=len(questions),
                 valid_questions=valid_count,
@@ -300,9 +318,17 @@ class DSPyQuizChallenge:
             )
             feedback_summary = feedback.feedback_summary
             github_result = feedback.github_classroom_marker
+            logger.debug(f"DSPy feedback generated successfully: {feedback_summary[:100]}...")
         except Exception as e:
             logger.error(f"Error generating feedback: {e}")
-            feedback_summary = f"Quiz completed. {student_wins}/{evaluated_questions} questions stumped the LLM."
+            logger.debug(f"Feedback generation exception details:", exc_info=True)
+            # Create manual feedback as fallback
+            if evaluated_questions == 0:
+                feedback_summary = "No questions were successfully processed. Please check your quiz format and try again."
+            elif student_wins == 0:
+                feedback_summary = "You did not answer any questions correctly. It appears you may need to review the material more thoroughly. Keep practicing and don't get discouraged!"
+            else:
+                feedback_summary = f"Quiz completed! You successfully stumped the LLM on {student_wins} out of {evaluated_questions} evaluated questions (success rate: {success_rate:.1%})."
             github_result = "STUDENTS_QUIZ_KEIKO_WIN" if student_passes else "STUDENTS_QUIZ_KEIKO_LOSE"
         
         return QuizResults(
