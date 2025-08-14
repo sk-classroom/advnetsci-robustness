@@ -18,6 +18,7 @@ from dspy_signatures import (
     EvaluateAnswer,
     ParseQuestionAndAnswer,
     ValidateQuestion,
+    ValidateQuestionSimilarity,
 )
 
 # Set up basic logging
@@ -44,6 +45,10 @@ def test_signatures():
     # Test EvaluateAnswer signature
     assert hasattr(EvaluateAnswer, "__annotations__")
     logger.info("✓ EvaluateAnswer signature defined")
+
+    # Test ValidateQuestionSimilarity signature
+    assert hasattr(ValidateQuestionSimilarity, "__annotations__")
+    logger.info("✓ ValidateQuestionSimilarity signature defined")
 
 
 def test_quiz_loading():

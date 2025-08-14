@@ -29,6 +29,7 @@ try:
         GenerateRevisionGuidance,
         ParseQuestionAndAnswer,
         ValidateQuestion,
+        ValidateQuestionSimilarity,
         ValidationIssue,
     )
 except ImportError:
@@ -40,6 +41,7 @@ except ImportError:
         GenerateRevisionGuidance,
         ParseQuestionAndAnswer,
         ValidateQuestion,
+        ValidateQuestionSimilarity,
         ValidationIssue,
     )
 
@@ -102,6 +104,7 @@ class QuizResults:
     feedback_summary: str
     student_passes: bool
     github_classroom_result: str
+    similarity_analysis: Optional[Dict[str, Any]] = None  # Added similarity analysis results
 
 
 class DSPyQuizChallenge:
@@ -135,6 +138,7 @@ class DSPyQuizChallenge:
         # Initialize DSPy predictors
         self.question_parser = dspy.Predict(ParseQuestionAndAnswer)
         self.question_validator = dspy.ChainOfThought(ValidateQuestion)
+        self.similarity_validator = dspy.ChainOfThought(ValidateQuestionSimilarity)
         self.question_answerer = dspy.ChainOfThought(AnswerQuizQuestion)
         self.answer_evaluator = dspy.ChainOfThought(EvaluateAnswer)
         self.feedback_generator = dspy.ChainOfThought(GenerateFeedback)
@@ -217,6 +221,84 @@ class DSPyQuizChallenge:
         """Extract main topics from context content for better revision guidance."""
         # Simplified - let the LLM figure out the topics from the context
         return []
+
+    def _validate_question_similarity(self, questions: List[QuizQuestion]) -> Dict[str, Any]:
+        """Validate questions for similarity and overlap."""
+        if len(questions) <= 1:
+            return {
+                'has_issues': False,
+                'duplicate_pairs': [],
+                'overlap_pairs': [],
+                'similarity_details': [],
+                'overall_assessment': 'Only one question provided, no similarity issues.'
+            }
+
+        try:
+            logger.debug(f"Checking similarity for {len(questions)} questions...")
+            similarity_result = self.similarity_validator(
+                questions=[q.question for q in questions],
+                answers=[q.answer for q in questions]
+            )
+
+            return {
+                'has_issues': similarity_result.has_duplicates or similarity_result.has_overlaps,
+                'duplicate_pairs': similarity_result.duplicate_pairs,
+                'overlap_pairs': similarity_result.overlap_pairs,
+                'similarity_details': similarity_result.similarity_details,
+                'overall_assessment': similarity_result.overall_assessment
+            }
+        except Exception as e:
+            logger.error(f"Error validating question similarity: {e}")
+            return {
+                'has_issues': False,
+                'duplicate_pairs': [],
+                'overlap_pairs': [],
+                'similarity_details': [f"Error checking similarity: {str(e)}"],
+                'overall_assessment': 'Unable to check question similarity due to system error.'
+            }
+
+    def _apply_similarity_issues_to_questions(
+        self, question_results: List[QuizResult], similarity_analysis: Dict[str, Any]
+    ) -> None:
+        """Apply similarity issues to individual question results."""
+        if not similarity_analysis['has_issues']:
+            return
+
+        # Parse duplicate pairs and add issues to affected questions
+        for pair_str in similarity_analysis['duplicate_pairs']:
+            try:
+                if '-' in pair_str:
+                    idx1, idx2 = map(int, pair_str.split('-'))
+                    # Convert to 0-based indexing if needed
+                    if idx1 > 0 and idx1 <= len(question_results):
+                        idx1 -= 1
+                    if idx2 > 0 and idx2 <= len(question_results):
+                        idx2 -= 1
+                    
+                    for idx in [idx1, idx2]:
+                        if 0 <= idx < len(question_results):
+                            if ValidationIssue.DUPLICATE_QUESTION.value not in question_results[idx].validation_issues:
+                                question_results[idx].validation_issues.append(ValidationIssue.DUPLICATE_QUESTION.value)
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Error parsing duplicate pair '{pair_str}': {e}")
+
+        # Parse overlap pairs and add issues to affected questions  
+        for pair_str in similarity_analysis['overlap_pairs']:
+            try:
+                if '-' in pair_str:
+                    idx1, idx2 = map(int, pair_str.split('-'))
+                    # Convert to 0-based indexing if needed
+                    if idx1 > 0 and idx1 <= len(question_results):
+                        idx1 -= 1
+                    if idx2 > 0 and idx2 <= len(question_results):
+                        idx2 -= 1
+                    
+                    for idx in [idx1, idx2]:
+                        if 0 <= idx < len(question_results):
+                            if ValidationIssue.OVERLAPPING_CONTENT.value not in question_results[idx].validation_issues:
+                                question_results[idx].validation_issues.append(ValidationIssue.OVERLAPPING_CONTENT.value)
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Error parsing overlap pair '{pair_str}': {e}")
 
     def load_quiz_from_file(self, quiz_file: Path) -> List[QuizQuestion]:
         """Load quiz from TOML file."""
@@ -312,6 +394,34 @@ class DSPyQuizChallenge:
         """Run the complete quiz challenge using DSPy structured output."""
         logger.info(f"Starting DSPy quiz challenge with {len(questions)} questions")
 
+        # Step 1: Validate question similarity first
+        logger.info("Validating question similarity and overlap...")
+        similarity_analysis = self._validate_question_similarity(questions)
+        if similarity_analysis['has_issues']:
+            print(f"\n🔍 SIMILARITY ANALYSIS RESULTS:")
+            print(f"   Found {len(similarity_analysis['duplicate_pairs'])} duplicate pairs and {len(similarity_analysis['overlap_pairs'])} overlap pairs")
+            
+            # Show the actual questions for reference
+            print(f"   📚 Your questions:")
+            for i, q in enumerate(questions, 1):
+                print(f"      Q{i}: {q.question}")
+            
+            if similarity_analysis['duplicate_pairs']:
+                print(f"   📋 Duplicate pairs: {', '.join(similarity_analysis['duplicate_pairs'])}")
+            if similarity_analysis['overlap_pairs']:
+                print(f"   🔄 Overlapping pairs: {', '.join(similarity_analysis['overlap_pairs'])}")
+                
+            print(f"   📝 Detailed analysis:")
+            for i, detail in enumerate(similarity_analysis['similarity_details'], 1):
+                print(f"      {i}. {detail}")
+            
+            print(f"   🎯 Overall assessment: {similarity_analysis['overall_assessment']}")
+            print(f"   ℹ️  Note: Similarity issues are informational and don't affect pass/fail if you legitimately won all questions\n")
+            
+            logger.warning(f"Similarity issues found: {len(similarity_analysis['duplicate_pairs'])} duplicate pairs, {len(similarity_analysis['overlap_pairs'])} overlap pairs")
+        else:
+            print(f"✅ No similarity issues found between questions\n")
+
         question_results = []
         valid_count = 0
         student_wins = 0
@@ -320,8 +430,13 @@ class DSPyQuizChallenge:
 
         # Create progress bar with more granular steps
         # Each question has: validate -> generate guidance -> LLM answer -> evaluate -> finalize
-        total_steps = len(questions) * 5
+        # Add 1 extra step for similarity validation
+        total_steps = len(questions) * 5 + 1
         pbar = tqdm(total=total_steps, desc="Processing quiz", unit="step")
+        
+        # Mark similarity validation as complete
+        pbar.set_description("Similarity validation complete")
+        pbar.update(1)
 
         for question in questions:
             logger.info(f"Processing question {question.number}: {question.question[:50]}...")
@@ -448,11 +563,28 @@ class DSPyQuizChallenge:
         # Close the progress bar
         pbar.close()
 
+        # Apply similarity issues to individual questions after all processing is complete
+        logger.info("Applying similarity issues to question results...")
+        self._apply_similarity_issues_to_questions(question_results, similarity_analysis)
+        
+        # Add similarity issues to the overall validation issues list
+        if similarity_analysis['has_issues']:
+            if similarity_analysis['duplicate_pairs']:
+                all_validation_issues.extend([ValidationIssue.DUPLICATE_QUESTION.value] * len(similarity_analysis['duplicate_pairs']))
+            if similarity_analysis['overlap_pairs']:
+                all_validation_issues.extend([ValidationIssue.OVERLAPPING_CONTENT.value] * len(similarity_analysis['overlap_pairs']))
+
         # Calculate results
         evaluated_questions = student_wins + llm_wins
         success_rate = student_wins / evaluated_questions if evaluated_questions > 0 else 0.0
+        
+        # Student passes if they win all valid questions - similarity issues are informational only
+        has_similarity_issues = similarity_analysis['has_issues']
         student_passes = (
-            valid_count == len(questions) and evaluated_questions > 0 and success_rate >= 1.0
+            valid_count == len(questions) and 
+            evaluated_questions > 0 and 
+            success_rate >= 1.0
+            # Removed similarity check - it shouldn't block passing if student legitimately won
         )
 
         # Generate feedback using DSPy
@@ -496,6 +628,7 @@ class DSPyQuizChallenge:
             feedback_summary=feedback_summary,
             student_passes=student_passes,
             github_classroom_result=github_result,
+            similarity_analysis=similarity_analysis,  # Added similarity analysis
         )
 
     def save_results(self, results: QuizResults, output_file: Path):

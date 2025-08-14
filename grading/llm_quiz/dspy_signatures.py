@@ -18,11 +18,16 @@ class ValidationIssue(str, Enum):
     PROMPT_INJECTION = "prompt_injection"
     ANSWER_QUALITY = "answer_quality"
     CONTEXT_MISMATCH = (
-        "context_mismatch"  # Only use when question is completely unrelated to course topic
+        "context_mismatch"  # Question is completely unrelated to course topic (use sparingly - allow reasonable extensions)
+    )
+    WEAK_CONTEXT_ALIGNMENT = (
+        "weak_context_alignment"  # Question is tangentially related but doesn't align well with context (consider if derivable from material)
     )
     VAGUE_QUESTION = "vague_question"  # Question lacks specificity or clarity
     AMBIGUOUS_WORDING = "ambiguous_wording"  # Question has multiple interpretations
     INCOMPLETE_CONTEXT = "incomplete_context"  # Question lacks sufficient context to answer clearly
+    DUPLICATE_QUESTION = "duplicate_question"  # Question is very similar to another question
+    OVERLAPPING_CONTENT = "overlapping_content"  # Question covers content heavily overlapping with another
 
 
 class ParseQuestionAndAnswer(dspy.Signature):
@@ -42,16 +47,25 @@ class ParseQuestionAndAnswer(dspy.Signature):
 class ValidateQuestion(dspy.Signature):
     """Validate a student's quiz question and their provided correct answer.
 
-    Questions should be considered valid if they are generally relevant to the course topic
-    (network science, small-world networks, etc.) even if they don't reference specific
-    details from the context. Only flag context_mismatch if the question is completely
-    unrelated to the course subject matter.
+    CONTENT ALIGNMENT REQUIREMENTS:
+    - Flag context_mismatch ONLY if the question is completely unrelated to the course subject matter (use sparingly)
+    - Flag weak_context_alignment if the question is only tangentially related or doesn't align well with the provided context materials
+    - Questions should demonstrate understanding of concepts from the course material, either explicitly covered OR reasonably derivable from the material
+    - Questions may explore implications, limitations, or extensions of core concepts if they stem logically from the provided context
+    - ALLOW questions that require reasonable inference or analytical thinking based on the foundational material
+    - ALLOW questions about limitations, shortcomings, or edge cases of concepts covered in the material, even if these limitations are not explicitly mentioned but can be logically derived
+    - BE GENEROUS in allowing questions that demonstrate deeper understanding through critical analysis of core concepts
     
-    Pay special attention to question clarity and specificity:
+    CLARITY AND SPECIFICITY REQUIREMENTS:
     - Flag vague_question if the question lacks specificity or is too general
     - Flag ambiguous_wording if the question has multiple valid interpretations
     - Flag incomplete_context if the question lacks sufficient context to answer clearly
-    - Questions should be precise, unambiguous, and clearly worded"""
+    - Questions should be precise, unambiguous, and clearly worded
+    
+    CONTENT DEPTH REQUIREMENTS:
+    - Questions should require understanding beyond simple memorization
+    - Questions should connect concepts or require analysis/application of knowledge
+    - Higher-level questions that explore limitations, implications, or applications of core concepts are encouraged"""
 
     question: str = dspy.InputField(desc="The student's quiz question to validate")
     answer: str = dspy.InputField(desc="The student's provided correct answer")
@@ -59,7 +73,7 @@ class ValidateQuestion(dspy.Signature):
 
     is_valid: bool = dspy.OutputField(desc="Whether the question is valid and acceptable")
     issues: List[ValidationIssue] = dspy.OutputField(
-        desc="List of specific validation issues found (check for vague_question, ambiguous_wording, incomplete_context)"
+        desc="List of specific validation issues found (check for context_mismatch, weak_context_alignment, vague_question, ambiguous_wording, incomplete_context). Be VERY lenient with context_mismatch - allow questions that reasonably derive from, extend, or critically analyze core concepts. Questions about limitations or edge cases of covered concepts should be accepted even if not explicitly mentioned in materials."
     )
     confidence: Literal["HIGH", "MEDIUM", "LOW"] = dspy.OutputField(
         desc="Confidence in validation decision"
@@ -85,6 +99,31 @@ class AnswerQuizQuestion(dspy.Signature):
     answer: str = dspy.OutputField(
         desc="Concise but thorough answer to the question (max 300 words)"
     )
+
+
+class ValidateQuestionSimilarity(dspy.Signature):
+    """Check for similarity and overlap between multiple quiz questions.
+    
+    This validator checks if questions are duplicates or have significant content overlap.
+    Questions should cover distinct topics and concepts to provide comprehensive assessment.
+    
+    SIMILARITY CRITERIA - BE LENIENT:
+    - Flag duplicate_question ONLY if questions are essentially asking the exact same thing with near-identical wording
+    - Flag overlapping_content ONLY if questions test the exact same specific knowledge with no meaningful distinction
+    - Questions about different aspects, limitations, or applications of the same general topic should NOT be flagged as similar
+    - Questions that require different reasoning or demonstrate different understanding should be allowed
+    - BE GENEROUS - only flag as similar if they are genuinely redundant or nearly identical
+    - Different phrasings that test distinct concepts or reasoning should NOT be flagged as duplicates"""
+
+    questions: List[str] = dspy.InputField(desc="List of all questions to check for similarity")
+    answers: List[str] = dspy.InputField(desc="List of corresponding answers for context")
+
+    has_duplicates: bool = dspy.OutputField(desc="Whether any questions are genuine duplicates (nearly identical). Be very conservative - only flag if truly redundant.")
+    has_overlaps: bool = dspy.OutputField(desc="Whether any questions test the exact same specific knowledge. Be lenient - different aspects of same topic are OK.")
+    duplicate_pairs: List[str] = dspy.OutputField(desc="Pairs of question indices that are genuine duplicates (e.g., '1-2')")
+    overlap_pairs: List[str] = dspy.OutputField(desc="Pairs of question indices with identical knowledge testing")
+    similarity_details: List[str] = dspy.OutputField(desc="Detailed explanation of each similarity found, including why it's considered similar or why it's acceptable")
+    overall_assessment: str = dspy.OutputField(desc="Overall assessment of question diversity and coverage, being generous with different aspects of same topic")
 
 
 class EvaluateAnswer(dspy.Signature):
