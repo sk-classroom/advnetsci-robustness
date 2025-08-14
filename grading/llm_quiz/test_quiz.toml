@@ -1,0 +1,9 @@
+title = "Test Quiz for DSPy Implementation"
+
+[[questions]]
+question = "What is 2 + 2?"
+answer = "4"
+
+[[questions]]
+question = "What is the capital of France?"
+answer = "Paris"
