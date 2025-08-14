@@ -40,9 +40,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sk-classroom/advnetsci-robustness"
-Repository = "https://github.com/sk-classroom/advnetsci-robustness"
-Documentation = "https://github.com/sk-classroom/advnetsci-robustness/blob/main/grading/README.md"
+Homepage = "https://github.com/skojaku/llm-quiz"
+Repository = "https://github.com/skojaku/llm-quiz"
+Documentation = "https://github.com/skojaku/llm-quiz/README.md"
 
 [project.scripts]
 llm-quiz = "llm_quiz.cli:main"
@@ -50,7 +50,7 @@ llm-quiz = "llm_quiz.cli:main"
 [tool.uv]
 dev-dependencies = [
     "pytest>=7.0.0",
-    "black>=23.0.0", 
+    "black>=23.0.0",
     "isort>=5.12.0",
     "flake8>=6.0.0",
 ]

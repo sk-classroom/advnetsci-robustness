@@ -6,29 +6,32 @@ Simplified implementation using DSPy structured output.
 """
 
 # Main interface using DSPy
-from .dspy_core import DSPyQuizChallenge as LLMQuizChallenge, QuizQuestion, QuizResult, QuizResults
+from .dspy_core import DSPyQuizChallenge as LLMQuizChallenge
+from .dspy_core import QuizQuestion, QuizResult, QuizResults
 
 # DSPy signatures for advanced usage
 from .dspy_signatures import (
-    ParseQuestionAndAnswer, ValidateQuestion, AnswerQuizQuestion, 
-    EvaluateAnswer, GenerateFeedback, ValidationIssue
+    AnswerQuizQuestion,
+    EvaluateAnswer,
+    GenerateFeedback,
+    ParseQuestionAndAnswer,
+    ValidateQuestion,
+    ValidationIssue,
 )
 
 __version__ = "3.0.0"
 __all__ = [
     # Main interface
     "LLMQuizChallenge",
-    
     # Core data structures
     "QuizQuestion",
-    "QuizResult", 
+    "QuizResult",
     "QuizResults",
-    
     # DSPy signatures
     "ParseQuestionAndAnswer",
-    "ValidateQuestion", 
+    "ValidateQuestion",
     "AnswerQuizQuestion",
     "EvaluateAnswer",
     "GenerateFeedback",
-    "ValidationIssue"
+    "ValidationIssue",
 ]
