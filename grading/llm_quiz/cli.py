@@ -107,77 +107,42 @@ def setup_logging(verbose: bool = False):
 
 
 def format_revision_guidance(results: QuizResults) -> str:
-    """Format revision guidance for display to the user."""
+    """Format concise revision guidance for display to the student."""
     if not results.question_results:
         return ""
     
-    guidance_sections = []
-    
-    # Group questions by revision priority
-    high_priority = []
-    medium_priority = []
-    low_priority = []
-    
+    # Only show guidance for questions that need improvement (lost to AI or invalid)
+    needs_improvement = []
     for result in results.question_results:
-        if result.revision_guidance:
-            priority = result.revision_guidance.revision_priority
-            if priority == "HIGH":
-                high_priority.append(result)
-            elif priority == "MEDIUM":
-                medium_priority.append(result)
-            elif priority == "LOW":
-                low_priority.append(result)
+        if not result.is_valid or not result.student_wins:
+            needs_improvement.append(result)
     
-    if not (high_priority or medium_priority or low_priority):
-        return ""
+    if not needs_improvement:
+        return "\n✨ All your questions successfully stumped the AI! No revisions needed."
     
-    guidance_sections.append("\n" + "="*80)
-    guidance_sections.append("📝 REVISION GUIDANCE FOR YOUR QUIZ QUESTIONS")
-    guidance_sections.append("="*80)
+    guidance_sections = []
+    guidance_sections.append("\n" + "="*60)
+    guidance_sections.append("💡 HOW TO IMPROVE YOUR QUESTIONS")
+    guidance_sections.append("="*60)
     
-    # Process high priority questions first
-    for priority_level, questions in [
-        ("🔴 HIGH PRIORITY", high_priority),
-        ("🟡 MEDIUM PRIORITY", medium_priority), 
-        ("🟢 LOW PRIORITY", low_priority)
-    ]:
-        if not questions:
-            continue
-            
-        guidance_sections.append(f"\n{priority_level} ({len(questions)} questions)")
-        guidance_sections.append("-" * len(priority_level))
+    for result in needs_improvement:
+        guidance_sections.append(f"\nQuestion {result.question.number}:")
+        guidance_sections.append(f"   \"{result.question.question}\"")
         
-        for result in questions:
+        if not result.is_valid:
+            guidance_sections.append("   Status: ❌ Invalid question")
+            guidance_sections.append(f"   Issue: {result.error}")
+        else:
+            guidance_sections.append("   Status: ❌ AI answered correctly")
+        
+        if result.revision_guidance:
             guidance = result.revision_guidance
-            guidance_sections.append(f"\n🔍 Question {result.question.number}:")
-            guidance_sections.append(f"   \"{result.question.question[:100]}{'...' if len(result.question.question) > 100 else ''}\"")
-            
-            if guidance.specific_issues:
-                guidance_sections.append("\n   ⚠️  Issues Found:")
-                for issue in guidance.specific_issues:
-                    guidance_sections.append(f"      • {issue}")
-            
             if guidance.concrete_suggestions:
-                guidance_sections.append("\n   💡 Improvement Suggestions:")
-                for suggestion in guidance.concrete_suggestions:
-                    guidance_sections.append(f"      • {suggestion}")
-            
-            if guidance.difficulty_adjustment:
-                guidance_sections.append(f"\n   🎯 Difficulty: {guidance.difficulty_adjustment}")
-            
-            if guidance.context_alignment:
-                guidance_sections.append(f"\n   📚 Context Alignment: {guidance.context_alignment}")
-            
-            if guidance.example_improvements:
-                guidance_sections.append("\n   ✨ Example Improvements:")
-                for example in guidance.example_improvements[:2]:  # Limit to 2 examples
-                    guidance_sections.append(f"      • {example}")
-            
-            guidance_sections.append("")  # Add spacing between questions
+                guidance_sections.append("   Suggestions:")
+                for suggestion in guidance.concrete_suggestions[:3]:  # Limit to top 3
+                    guidance_sections.append(f"   • {suggestion}")
     
-    guidance_sections.append("="*80)
-    guidance_sections.append("💡 Use this guidance to revise your questions and improve your quiz!")
-    guidance_sections.append("="*80)
+    guidance_sections.append("\n" + "="*60)
     
     return "\n".join(guidance_sections)
 
@@ -345,10 +310,35 @@ def main():
         questions = challenge.load_quiz_from_file(args.quiz_file)
         results = challenge.run_quiz_challenge(questions)
         
-        # Display feedback
-        print(results.feedback_summary)
+        # Display clear pass/fail result first
+        print("="*80)
+        if results.student_passes:
+            print("🎉 RESULT: PASS - You successfully stumped the AI!")
+        else:
+            print("❌ RESULT: FAIL - The AI answered too many questions correctly")
+        print("="*80)
         
-        # Display revision guidance
+        # Display summary statistics
+        print(f"📊 Summary: {results.student_wins}/{results.valid_questions} questions stumped the AI")
+        print(f"Success Rate: {results.success_rate:.1%}")
+        print()
+        
+        # Display detailed results for each question
+        for result in results.question_results:
+            if result.is_valid:
+                status = "✅ You win!" if result.student_wins else "❌ AI wins"
+                print(f"Question {result.question.number}: {status}")
+                print(f"  Your question: {result.question.question}")
+                print(f"  Your answer: {result.question.answer}")
+                print(f"  AI's answer: {result.llm_answer}")
+                print(f"  Evaluation: {result.evaluation_explanation}")
+            else:
+                print(f"Question {result.question.number}: ⚠️ Invalid")
+                print(f"  Your question: {result.question.question}")
+                print(f"  Issue: {result.error}")
+            print()
+        
+        # Display concise revision guidance only if questions need improvement
         revision_guidance = format_revision_guidance(results)
         if revision_guidance:
             print(revision_guidance)

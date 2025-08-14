@@ -14,6 +14,7 @@ import urllib.request
 import urllib.error
 
 import dspy
+from tqdm import tqdm
 try:
     import tomllib  # Python 3.11+
 except ImportError:
@@ -273,11 +274,17 @@ class DSPyQuizChallenge:
         llm_wins = 0
         all_validation_issues = []
         
+        # Create progress bar with more granular steps
+        # Each question has: validate -> generate guidance -> LLM answer -> evaluate -> finalize
+        total_steps = len(questions) * 5  
+        pbar = tqdm(total=total_steps, desc="Processing quiz", unit="step")
+        
         for question in questions:
             logger.info(f"Processing question {question.number}: {question.question[:50]}...")
             
             try:
                 # Step 1: Validate the student's question using DSPy
+                pbar.set_description(f"Q{question.number}: Validating question")
                 logger.debug(f"Validating student's question {question.number} with DSPy...")
                 validation = self.question_validator(
                     question=question.question,
@@ -285,11 +292,15 @@ class DSPyQuizChallenge:
                     context_content=self.context_content
                 )
                 logger.debug(f"Validation result: valid={validation.is_valid}, reason={validation.reason}")
+                pbar.update(1)  # Step 1 complete
                 
-                # Generate revision guidance for all questions (valid or invalid)
+                # Step 2: Generate revision guidance for all questions (valid or invalid)
+                pbar.set_description(f"Q{question.number}: Generating guidance")
                 revision_guidance = self._generate_revision_guidance(question, validation)
+                pbar.update(1)  # Step 2 complete
                 
                 if not validation.is_valid:
+                    pbar.set_description(f"Q{question.number}: Question invalid, skipping")
                     logger.warning(f"Student's question {question.number} failed validation: {validation.reason}")
                     all_validation_issues.extend([issue.value for issue in validation.issues])
                     
@@ -306,12 +317,15 @@ class DSPyQuizChallenge:
                         error=validation.reason
                     )
                     question_results.append(result)
+                    # Skip remaining 3 steps for invalid questions
+                    pbar.update(3)
                     continue
                 
                 valid_count += 1
                 
-                # Step 2: LLM attempts to answer the student's question using DSPy
+                # Step 3: LLM attempts to answer the student's question using DSPy
                 # We need to switch to the quiz model for this step
+                pbar.set_description(f"Q{question.number}: LLM taking quiz")
                 logger.debug(f"LLM attempting to answer student's question {question.number} using {self.quiz_model}...")
                 with dspy.context(lm=dspy.LM(model=self.quiz_model, api_base=self.base_url, api_key=self.api_key)):
                     llm_response = self.question_answerer(
@@ -319,8 +333,10 @@ class DSPyQuizChallenge:
                         context_content=self.context_content
                     )
                 logger.debug(f"LLM's answer: {llm_response.answer[:100]}...")
+                pbar.update(1)  # Step 3 complete
                 
-                # Step 3: Evaluate LLM's answer against student's correct answer using DSPy
+                # Step 4: Evaluate LLM's answer against student's correct answer using DSPy
+                pbar.set_description(f"Q{question.number}: Evaluating LLM answer")
                 logger.debug(f"Evaluating LLM's answer for question {question.number}...")
                 evaluation = self.answer_evaluator(
                     question=question.question,
@@ -328,12 +344,15 @@ class DSPyQuizChallenge:
                     llm_answer=llm_response.answer
                 )
                 logger.debug(f"Evaluation: verdict={evaluation.verdict}, student_wins={evaluation.student_wins}")
+                pbar.update(1)  # Step 4 complete
                 
-                # Update counters
+                # Step 5: Finalize results
                 if evaluation.student_wins:
                     student_wins += 1
+                    pbar.set_description(f"Q{question.number}: Complete - Student wins!")
                 else:
                     llm_wins += 1
+                    pbar.set_description(f"Q{question.number}: Complete - LLM wins")
                 
                 # Generate revision guidance for valid questions too
                 revision_guidance = self._generate_revision_guidance(question, validation, llm_response.answer, evaluation)
@@ -350,8 +369,10 @@ class DSPyQuizChallenge:
                     improvement_suggestions=evaluation.improvement_suggestions
                 )
                 question_results.append(result)
+                pbar.update(1)  # Step 5 complete
                 
             except Exception as e:
+                pbar.set_description(f"Q{question.number}: Error occurred")
                 logger.error(f"Error processing question {question.number}: {e}")
                 logger.debug(f"Full exception details:", exc_info=True)
                 result = QuizResult(
@@ -364,6 +385,11 @@ class DSPyQuizChallenge:
                     error=str(e)
                 )
                 question_results.append(result)
+                # Update remaining steps for error case
+                pbar.update(5 - (pbar.n % 5) if pbar.n % 5 != 0 else 0)
+        
+        # Close the progress bar
+        pbar.close()
         
         # Calculate results
         evaluated_questions = student_wins + llm_wins
