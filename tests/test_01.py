@@ -4,6 +4,7 @@
 #     "numpy>=1.20.0",
 #     "python-igraph>=0.11.0",
 #     "requests>=2.31.0",
+#     "marimo",
 # ]
 # ///
 
@@ -36,7 +37,7 @@ print(f"📊 Test network: {g.vcount()} nodes, {g.ecount()} edges")
 
 try:
     edge_sequence = degree_edge_attack_sequence(g)
-    
+
     # ------------------------------------------------------------
     # Test 1: Function returns a list
     # ------------------------------------------------------------
@@ -62,7 +63,7 @@ try:
     # ------------------------------------------------------------
     original_edges = set((e.source, e.target) for e in g.es)
     original_edges.update((e.target, e.source) for e in g.es)  # Add reverse edges
-    
+
     all_exist = all((source, target) in original_edges for source, target in edge_sequence)
     print(f"[Test 4] All edges exist in original graph: {all_exist}")
     assert all_exist, "All edges must exist in the original graph"
@@ -103,9 +104,9 @@ try:
     # First few edges should connect high-degree nodes
     high_degree_threshold = max(degrees) * 0.7
     high_degree_edges = sum(1 for i in range(min(10, len(edge_sequence)))
-                           if degrees[edge_sequence[i][0]] >= high_degree_threshold or 
+                           if degrees[edge_sequence[i][0]] >= high_degree_threshold or
                               degrees[edge_sequence[i][1]] >= high_degree_threshold)
-    
+
     print(f"   High-degree edges in top 10: {high_degree_edges}/10")
 
     print("\n🎉 ALL TESTS PASSED! Degree-based edge attack sequence is correctly implemented.")
