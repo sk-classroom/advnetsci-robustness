@@ -29,10 +29,10 @@ class ParseQuestionAndAnswer(dspy.Signature):
 
 
 class ValidateQuestion(dspy.Signature):
-    """Validate a quiz question and answer for appropriateness and quality."""
+    """Validate a student's quiz question and their provided correct answer."""
     
-    question: str = dspy.InputField(desc="The quiz question to validate")
-    answer: str = dspy.InputField(desc="The student's provided answer")
+    question: str = dspy.InputField(desc="The student's quiz question to validate")
+    answer: str = dspy.InputField(desc="The student's provided correct answer")
     context_content: Optional[str] = dspy.InputField(desc="Course context materials, if available")
     
     is_valid: bool = dspy.OutputField(desc="Whether the question is valid and acceptable")
@@ -44,20 +44,20 @@ class ValidateQuestion(dspy.Signature):
 
 
 class AnswerQuizQuestion(dspy.Signature):
-    """Answer a quiz question using provided context materials."""
+    """LLM attempts to answer a student's quiz question using provided context materials."""
     
-    question: str = dspy.InputField(desc="The quiz question to answer")
+    question: str = dspy.InputField(desc="The student's quiz question for LLM to answer")
     context_content: Optional[str] = dspy.InputField(desc="Course context materials for reference")
     
     answer: str = dspy.OutputField(desc="Concise but thorough answer to the question (max 300 words)")
 
 
 class EvaluateAnswer(dspy.Signature):
-    """Evaluate an LLM's answer against the correct answer for a quiz question."""
+    """Evaluate an LLM's answer against the student's correct answer."""
     
-    question: str = dspy.InputField(desc="The quiz question")
-    correct_answer: str = dspy.InputField(desc="The correct answer provided by the student")
-    llm_answer: str = dspy.InputField(desc="The LLM's answer to evaluate")
+    question: str = dspy.InputField(desc="The student's quiz question")
+    correct_answer: str = dspy.InputField(desc="The student's provided correct answer")
+    llm_answer: str = dspy.InputField(desc="The LLM's attempt at answering the student's question")
     
     verdict: Literal["CORRECT", "INCORRECT"] = dspy.OutputField(desc="Whether the LLM's answer is correct")
     student_wins: bool = dspy.OutputField(desc="True if student wins (LLM got it wrong), False if LLM correct")
@@ -67,12 +67,12 @@ class EvaluateAnswer(dspy.Signature):
 
 
 class GenerateRevisionGuidance(dspy.Signature):
-    """Generate detailed revision guidance for quiz questions that need improvement."""
+    """Generate detailed revision guidance for student's quiz questions that need improvement."""
     
-    question: str = dspy.InputField(desc="The original question")
-    answer: str = dspy.InputField(desc="The student's provided answer")
+    question: str = dspy.InputField(desc="The student's quiz question")
+    answer: str = dspy.InputField(desc="The student's provided correct answer")
     validation_issues: List[str] = dspy.InputField(desc="Issues found during validation")
-    llm_response: Optional[str] = dspy.InputField(desc="LLM's answer if question was processed")
+    llm_response: Optional[str] = dspy.InputField(desc="LLM's attempt at answering if question was processed")
     evaluation_result: Optional[str] = dspy.InputField(desc="Evaluation result if question was processed")
     context_topics: List[str] = dspy.InputField(desc="Main topics covered in the context materials")
     

@@ -205,7 +205,7 @@ def validate_arguments(args) -> bool:
 def create_parser() -> argparse.ArgumentParser:
     """Create and configure argument parser."""
     parser = argparse.ArgumentParser(
-        description="LLM Quiz Challenge - Test if students can stump AI models",
+        description="LLM Quiz Challenge - Students create questions to stump AI models",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -239,7 +239,7 @@ GitHub Classroom Integration:
         "--quiz-file",
         type=Path,
         required=True,
-        help="Path to TOML quiz file containing questions and answers"
+        help="Path to TOML quiz file containing student's questions and their correct answers"
     )
     
     parser.add_argument(
@@ -265,13 +265,13 @@ GitHub Classroom Integration:
     parser.add_argument(
         "--quiz-model",
         default="gpt-4o-mini",
-        help="Model for taking the quiz (default: gpt-4o-mini)"
+        help="Model for LLM to answer student's questions (default: gpt-4o-mini)"
     )
     
     parser.add_argument(
         "--evaluator-model", 
         default="gpt-4o",
-        help="Model for evaluating answers (default: gpt-4o)"
+        help="Model for evaluating LLM's answers against student's correct answers (default: gpt-4o)"
     )
     
     # Context configuration

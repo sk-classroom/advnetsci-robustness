@@ -36,9 +36,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class QuizQuestion:
-    """Represents a single quiz question."""
-    question: str
-    answer: str
+    """Represents a single quiz question created by the student."""
+    question: str  # Student's question
+    answer: str    # Student's provided correct answer
     number: int
 
 
@@ -55,16 +55,16 @@ class RevisionGuidance:
 
 @dataclass
 class QuizResult:
-    """Result for a single question."""
-    question: QuizQuestion
-    llm_answer: str
-    is_valid: bool
-    student_wins: bool
-    evaluation_explanation: str
-    validation_issues: List[str]
-    revision_guidance: Optional[RevisionGuidance] = None
-    difficulty_assessment: Optional[str] = None
-    improvement_suggestions: List[str] = None
+    """Result for a single question created by the student."""
+    question: QuizQuestion                              # Student's question and correct answer
+    llm_answer: str                                     # LLM's attempt at answering the student's question
+    is_valid: bool                                      # Whether the student's question is valid
+    student_wins: bool                                  # True if student wins (LLM got it wrong)
+    evaluation_explanation: str                         # Explanation of how LLM's answer was evaluated
+    validation_issues: List[str]                        # Issues found with student's question
+    revision_guidance: Optional[RevisionGuidance] = None # Guidance for improving student's question
+    difficulty_assessment: Optional[str] = None         # Assessment of question difficulty
+    improvement_suggestions: List[str] = None           # Suggestions for improving student's question
     error: Optional[str] = None
 
 
@@ -230,7 +230,7 @@ class DSPyQuizChallenge:
     def _generate_revision_guidance(self, question: QuizQuestion, validation_result: Any, 
                                   llm_response: Optional[str] = None, 
                                   evaluation_result: Optional[Any] = None) -> RevisionGuidance:
-        """Generate detailed revision guidance for a question."""
+        """Generate detailed revision guidance for a student's question."""
         try:
             context_topics = self._extract_context_topics()
             
@@ -277,8 +277,8 @@ class DSPyQuizChallenge:
             logger.info(f"Processing question {question.number}: {question.question[:50]}...")
             
             try:
-                # Step 1: Validate the question using DSPy
-                logger.debug(f"Validating question {question.number} with DSPy...")
+                # Step 1: Validate the student's question using DSPy
+                logger.debug(f"Validating student's question {question.number} with DSPy...")
                 validation = self.question_validator(
                     question=question.question,
                     answer=question.answer,
@@ -290,7 +290,7 @@ class DSPyQuizChallenge:
                 revision_guidance = self._generate_revision_guidance(question, validation)
                 
                 if not validation.is_valid:
-                    logger.warning(f"Question {question.number} failed validation: {validation.reason}")
+                    logger.warning(f"Student's question {question.number} failed validation: {validation.reason}")
                     all_validation_issues.extend([issue.value for issue in validation.issues])
                     
                     result = QuizResult(
@@ -298,7 +298,7 @@ class DSPyQuizChallenge:
                         llm_answer="Question rejected during validation",
                         is_valid=False,
                         student_wins=False,
-                        evaluation_explanation=f"Invalid question: {validation.reason}",
+                        evaluation_explanation=f"Invalid student question: {validation.reason}",
                         validation_issues=[issue.value for issue in validation.issues],
                         revision_guidance=revision_guidance,
                         difficulty_assessment=validation.difficulty_assessment,
@@ -310,18 +310,18 @@ class DSPyQuizChallenge:
                 
                 valid_count += 1
                 
-                # Step 2: Get LLM answer using DSPy
+                # Step 2: LLM attempts to answer the student's question using DSPy
                 # We need to switch to the quiz model for this step
-                logger.debug(f"Getting LLM answer for question {question.number} using {self.quiz_model}...")
+                logger.debug(f"LLM attempting to answer student's question {question.number} using {self.quiz_model}...")
                 with dspy.context(lm=dspy.LM(model=self.quiz_model, api_base=self.base_url, api_key=self.api_key)):
                     llm_response = self.question_answerer(
                         question=question.question,
                         context_content=self.context_content
                     )
-                logger.debug(f"LLM answer: {llm_response.answer[:100]}...")
+                logger.debug(f"LLM's answer: {llm_response.answer[:100]}...")
                 
-                # Step 3: Evaluate the answer using DSPy
-                logger.debug(f"Evaluating answer for question {question.number}...")
+                # Step 3: Evaluate LLM's answer against student's correct answer using DSPy
+                logger.debug(f"Evaluating LLM's answer for question {question.number}...")
                 evaluation = self.answer_evaluator(
                     question=question.question,
                     correct_answer=question.answer,
