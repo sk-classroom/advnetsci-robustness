@@ -6,19 +6,14 @@ This script tests the basic functionality without requiring real API keys.
 
 import sys
 import logging
+import os
 from pathlib import Path
 
 # Import our modules
-import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from dspy_signatures import ParseQuestionAndAnswer, ValidateQuestion, AnswerQuizQuestion, EvaluateAnswer
-try:
-    from dspy_core import DSPyQuizChallenge, QuizQuestion
-except ImportError:
-    # Handle relative import issue by adjusting the imports in dspy_core
-    print("Import issue detected - this is expected in development")
+from dspy_core import DSPyQuizChallenge, QuizQuestion
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -116,7 +111,7 @@ def main():
         logger.info("✓ All basic tests passed!")
         logger.info("")
         logger.info("Note: Full functionality requires valid API credentials.")
-        logger.info("Use the --use-dspy flag with the CLI to test with real APIs.")
+        logger.info("Use the CLI with valid credentials to test with real APIs.")
         
     except Exception as e:
         logger.error(f"✗ Test failed: {e}")

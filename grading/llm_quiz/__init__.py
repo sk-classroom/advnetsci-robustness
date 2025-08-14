@@ -2,37 +2,33 @@
 LLM Quiz Challenge Library
 
 A library for creating and evaluating quiz challenges where students try to stump AI models.
+Simplified implementation using DSPy structured output.
 """
 
-# Main interfaces
-from .challenge import LLMQuizChallenge
-from .core import LLMQuizChallenge as LLMQuizChallengeOld  # Keep old interface for compatibility
+# Main interface using DSPy
+from .dspy_core import DSPyQuizChallenge as LLMQuizChallenge, QuizQuestion, QuizResult, QuizResults
 
-# Core components for advanced usage
-from .llm_client import LLMClient
-from .quiz_runner import QuizRunner, QuizResults, QuizQuestion, QuestionResult
-from .validator import QuestionValidator, ValidationResult, ValidationIssue
-from .content_loader import ContentLoader, ContentSource
-from .results_analyzer import ResultsAnalyzer
+# DSPy signatures for advanced usage
+from .dspy_signatures import (
+    ParseQuestionAndAnswer, ValidateQuestion, AnswerQuizQuestion, 
+    EvaluateAnswer, GenerateFeedback, ValidationIssue
+)
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 __all__ = [
     # Main interface
     "LLMQuizChallenge",
     
-    # Compatibility
-    "LLMQuizChallengeOld",
-    
-    # Core components
-    "LLMClient",
-    "QuizRunner", 
-    "QuizResults",
+    # Core data structures
     "QuizQuestion",
-    "QuestionResult",
-    "QuestionValidator",
-    "ValidationResult", 
-    "ValidationIssue",
-    "ContentLoader",
-    "ContentSource",
-    "ResultsAnalyzer"
+    "QuizResult", 
+    "QuizResults",
+    
+    # DSPy signatures
+    "ParseQuestionAndAnswer",
+    "ValidateQuestion", 
+    "AnswerQuizQuestion",
+    "EvaluateAnswer",
+    "GenerateFeedback",
+    "ValidationIssue"
 ]

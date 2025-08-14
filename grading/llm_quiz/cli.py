@@ -9,14 +9,13 @@ import argparse
 import sys
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 try:
     import tomllib  # Python 3.11+ built-in TOML parser
 except ImportError:
     import tomli as tomllib  # Fallback for Python < 3.11
 
-from .challenge import LLMQuizChallenge
 from .dspy_core import DSPyQuizChallenge
 
 logger = logging.getLogger(__name__)
@@ -66,12 +65,6 @@ def merge_config_with_args(args, config: Dict[str, Any]) -> None:
     if not hasattr(args, 'evaluator_model') or args.evaluator_model == 'gpt-4o':
         args.evaluator_model = models_config.get('evaluator_model', 'gpt-4o')
     
-    # Parameters configuration
-    params_config = config.get('parameters', {})
-    if not hasattr(args, 'context_window_size') or args.context_window_size == 32768:
-        args.context_window_size = params_config.get('context_window_size', 32768)
-    if not hasattr(args, 'max_tokens') or args.max_tokens == 500:
-        args.max_tokens = params_config.get('max_tokens', 500)
     
     # Context configuration
     context_config = config.get('context', {})
@@ -155,9 +148,6 @@ Examples:
   # Save results and show verbose output
   python -m llm_quiz.cli --quiz-file quiz.toml --api-key sk-xxx --output results.json --verbose
 
-  # Use custom max tokens for longer responses
-  python -m llm_quiz.cli --quiz-file quiz.toml --api-key sk-xxx --max-tokens 1000
-
   # Use configuration file for parameters and context
   python -m llm_quiz.cli --quiz-file quiz.toml --api-key sk-xxx --config config.toml
 
@@ -214,19 +204,6 @@ GitHub Classroom Integration:
         help="File containing URLs to fetch for context (one URL per line)"
     )
     
-    parser.add_argument(
-        "--context-window-size",
-        type=int,
-        default=32768,
-        help="Context window size for LLM models (default: 32768)"
-    )
-    
-    parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=500,
-        help="Maximum tokens in LLM response (default: 500)"
-    )
     
     # Output configuration
     parser.add_argument(
@@ -242,11 +219,6 @@ GitHub Classroom Integration:
         help="Enable verbose logging output"
     )
     
-    parser.add_argument(
-        "--use-dspy",
-        action="store_true",
-        help="Use simplified DSPy implementation (experimental)"
-    )
     
     parser.add_argument(
         "--exit-on-fail",
@@ -276,81 +248,37 @@ def main():
         sys.exit(1)
     
     try:
-        # Choose implementation based on flag
-        if args.use_dspy:
-            logger.info("Initializing DSPy LLM Quiz Challenge...")
-            logger.info(f"Base URL: {args.base_url}")
-            logger.info(f"Quiz Model: {args.quiz_model}")
-            logger.info(f"Evaluator Model: {args.evaluator_model}")
-            if args.context_urls:
-                logger.info(f"Context URLs file: {args.context_urls}")
-            
-            challenge = DSPyQuizChallenge(
-                api_key=args.api_key,
-                base_url=args.base_url,
-                quiz_model=args.quiz_model,
-                evaluator_model=args.evaluator_model,
-                context_urls_file=args.context_urls
-            )
-            
-            # Load and run quiz
-            logger.info("Starting DSPy quiz challenge...")
-            questions = challenge.load_quiz_from_file(args.quiz_file)
-            results = challenge.run_quiz_challenge(questions)
-            
-            # Display feedback
-            print(results.feedback_summary)
-            
-            # Save results
-            if args.output:
-                challenge.save_results(results, args.output)
-                logger.info(f"Detailed results saved to {args.output}")
-            
-            # Check pass/fail for exit code
-            student_passes = results.student_passes
-            
-        else:
-            # Original implementation
-            logger.info("Initializing LLM Quiz Challenge...")
-            logger.info(f"Base URL: {args.base_url}")
-            logger.info(f"Quiz Model: {args.quiz_model}")
-            logger.info(f"Evaluator Model: {args.evaluator_model}")
-            logger.info(f"Context Window Size: {args.context_window_size}")
-            if args.context_urls:
-                logger.info(f"Context URLs file: {args.context_urls}")
-            
-            challenge = LLMQuizChallenge(
-                api_key=args.api_key,
-                base_url=args.base_url,
-                quiz_model=args.quiz_model,
-                evaluator_model=args.evaluator_model,
-                context_window_size=args.context_window_size,
-                max_tokens=args.max_tokens
-            )
-            
-            # Load context if provided
-            if args.context_urls:
-                context_loaded = challenge.load_context_from_urls_file(args.context_urls)
-                if not context_loaded:
-                    logger.warning("Failed to load context from URLs file")
-            
-            # Run the challenge
-            logger.info("Starting quiz challenge...")
-            results = challenge.run_quiz_from_file(args.quiz_file)
-            
-            # Generate and display feedback
-            feedback = challenge.get_student_feedback(results)
-            print(feedback)
-            
-            # Save results if requested
-            if args.output:
-                challenge.save_results(args.output, results)
-                logger.info(f"Detailed results saved to {args.output}")
-            
-            student_passes = results.student_passes
+        # Initialize DSPy LLM Quiz Challenge
+        logger.info("Initializing DSPy LLM Quiz Challenge...")
+        logger.info(f"Base URL: {args.base_url}")
+        logger.info(f"Quiz Model: {args.quiz_model}")
+        logger.info(f"Evaluator Model: {args.evaluator_model}")
+        if args.context_urls:
+            logger.info(f"Context URLs file: {args.context_urls}")
+        
+        challenge = DSPyQuizChallenge(
+            api_key=args.api_key,
+            base_url=args.base_url,
+            quiz_model=args.quiz_model,
+            evaluator_model=args.evaluator_model,
+            context_urls_file=args.context_urls
+        )
+        
+        # Load and run quiz
+        logger.info("Starting DSPy quiz challenge...")
+        questions = challenge.load_quiz_from_file(args.quiz_file)
+        results = challenge.run_quiz_challenge(questions)
+        
+        # Display feedback
+        print(results.feedback_summary)
+        
+        # Save results
+        if args.output:
+            challenge.save_results(results, args.output)
+            logger.info(f"Detailed results saved to {args.output}")
         
         # Exit with appropriate code for GitHub Classroom
-        if args.exit_on_fail and not student_passes:
+        if args.exit_on_fail and not results.student_passes:
             logger.info("Student did not pass grading criteria")
             exit_code = 1
         else:
