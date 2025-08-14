@@ -39,7 +39,7 @@ class Colors:
     # Content
     QUESTION = Fore.MAGENTA
     ANSWER = Fore.WHITE + Style.BRIGHT
-    AI_RESPONSE = Fore.LIGHTBLACK_EX
+    AI_RESPONSE = Fore.LIGHTBLUE_EX
     EVALUATION = Fore.YELLOW
     
     # Status indicators
