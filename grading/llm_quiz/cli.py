@@ -16,9 +16,39 @@ try:
 except ImportError:
     import tomli as tomllib  # Fallback for Python < 3.11
 
+import colorama
+from colorama import Fore, Back, Style
+
 from .dspy_core import DSPyQuizChallenge, QuizResults, QuizResult
 
+# Initialize colorama for cross-platform color support
+colorama.init()
+
 logger = logging.getLogger(__name__)
+
+
+class Colors:
+    """Color definitions for terminal output."""
+    # Headers and labels
+    HEADER = Fore.CYAN + Style.BRIGHT
+    SUCCESS = Fore.GREEN + Style.BRIGHT
+    ERROR = Fore.RED + Style.BRIGHT
+    WARNING = Fore.YELLOW + Style.BRIGHT
+    INFO = Fore.BLUE + Style.BRIGHT
+    
+    # Content
+    QUESTION = Fore.MAGENTA
+    ANSWER = Fore.WHITE + Style.BRIGHT
+    AI_RESPONSE = Fore.LIGHTBLACK_EX
+    EVALUATION = Fore.YELLOW
+    
+    # Status indicators
+    WIN = Fore.GREEN + Style.BRIGHT
+    LOSE = Fore.RED + Style.BRIGHT
+    INVALID = Fore.YELLOW + Style.BRIGHT
+    
+    # Reset
+    RESET = Style.RESET_ALL
 
 
 def load_config(config_file: Path) -> Dict[str, Any]:
@@ -118,29 +148,29 @@ def format_revision_guidance(results: QuizResults) -> str:
             needs_improvement.append(result)
     
     if not needs_improvement:
-        return "\n✨ All your questions successfully stumped the AI! No revisions needed."
+        return f"\n{Colors.SUCCESS}✨ All your questions successfully stumped the AI! No revisions needed.{Colors.RESET}"
     
     guidance_sections = []
     guidance_sections.append("\n" + "="*60)
-    guidance_sections.append("💡 HOW TO IMPROVE YOUR QUESTIONS")
+    guidance_sections.append(f"{Colors.WARNING}💡 HOW TO IMPROVE YOUR QUESTIONS{Colors.RESET}")
     guidance_sections.append("="*60)
     
     for result in needs_improvement:
-        guidance_sections.append(f"\nQuestion {result.question.number}:")
-        guidance_sections.append(f"   \"{result.question.question}\"")
+        guidance_sections.append(f"\n{Colors.HEADER}Question {result.question.number}:{Colors.RESET}")
+        guidance_sections.append(f"   {Colors.QUESTION}\"{result.question.question}\"{Colors.RESET}")
         
         if not result.is_valid:
-            guidance_sections.append("   Status: ❌ Invalid question")
-            guidance_sections.append(f"   Issue: {result.error}")
+            guidance_sections.append(f"   {Colors.HEADER}Status:{Colors.RESET} {Colors.ERROR}❌ Invalid question{Colors.RESET}")
+            guidance_sections.append(f"   {Colors.HEADER}Issue:{Colors.RESET} {Colors.ERROR}{result.error}{Colors.RESET}")
         else:
-            guidance_sections.append("   Status: ❌ AI answered correctly")
+            guidance_sections.append(f"   {Colors.HEADER}Status:{Colors.RESET} {Colors.LOSE}❌ AI answered correctly{Colors.RESET}")
         
         if result.revision_guidance:
             guidance = result.revision_guidance
             if guidance.concrete_suggestions:
-                guidance_sections.append("   Suggestions:")
+                guidance_sections.append(f"   {Colors.HEADER}Suggestions:{Colors.RESET}")
                 for suggestion in guidance.concrete_suggestions[:3]:  # Limit to top 3
-                    guidance_sections.append(f"   • {suggestion}")
+                    guidance_sections.append(f"   {Colors.INFO}• {suggestion}{Colors.RESET}")
     
     guidance_sections.append("\n" + "="*60)
     
@@ -289,13 +319,15 @@ def main():
         sys.exit(1)
     
     try:
-        # Initialize DSPy LLM Quiz Challenge
+        # Initialize DSPy LLM Quiz Challenge with progress indicators
+        print(f"{Colors.INFO}🔧 Initializing quiz system...{Colors.RESET}")
         logger.info("Initializing DSPy LLM Quiz Challenge...")
         logger.info(f"Base URL: {args.base_url}")
         logger.info(f"Quiz Model: {args.quiz_model}")
         logger.info(f"Evaluator Model: {args.evaluator_model}")
         if args.context_urls:
             logger.info(f"Context URLs file: {args.context_urls}")
+            print(f"{Colors.INFO}📥 Loading context materials...{Colors.RESET}")
         
         challenge = DSPyQuizChallenge(
             api_key=args.api_key,
@@ -306,36 +338,41 @@ def main():
         )
         
         # Load and run quiz
-        logger.info("Starting DSPy quiz challenge...")
+        print(f"{Colors.INFO}📋 Loading quiz questions...{Colors.RESET}")
         questions = challenge.load_quiz_from_file(args.quiz_file)
+        print(f"{Colors.INFO}🚀 Starting quiz challenge with {len(questions)} questions...{Colors.RESET}")
         results = challenge.run_quiz_challenge(questions)
         
         # Display clear pass/fail result first
         print("="*80)
         if results.student_passes:
-            print("🎉 RESULT: PASS - You successfully stumped the AI!")
+            print(f"{Colors.SUCCESS}🎉 RESULT: PASS - You successfully stumped the AI!{Colors.RESET}")
         else:
-            print("❌ RESULT: FAIL - The AI answered too many questions correctly")
+            print(f"{Colors.ERROR}❌ RESULT: FAIL - The AI answered too many questions correctly{Colors.RESET}")
         print("="*80)
         
         # Display summary statistics
-        print(f"📊 Summary: {results.student_wins}/{results.valid_questions} questions stumped the AI")
-        print(f"Success Rate: {results.success_rate:.1%}")
+        print(f"{Colors.INFO}📊 Summary:{Colors.RESET} {results.student_wins}/{results.valid_questions} questions stumped the AI")
+        print(f"{Colors.INFO}Success Rate:{Colors.RESET} {results.success_rate:.1%}")
         print()
         
         # Display detailed results for each question
         for result in results.question_results:
             if result.is_valid:
-                status = "✅ You win!" if result.student_wins else "❌ AI wins"
-                print(f"Question {result.question.number}: {status}")
-                print(f"  Your question: {result.question.question}")
-                print(f"  Your answer: {result.question.answer}")
-                print(f"  AI's answer: {result.llm_answer}")
-                print(f"  Evaluation: {result.evaluation_explanation}")
+                if result.student_wins:
+                    status_text = f"{Colors.WIN}✅ You win!{Colors.RESET}"
+                else:
+                    status_text = f"{Colors.LOSE}❌ AI wins{Colors.RESET}"
+                
+                print(f"{Colors.HEADER}Question {result.question.number}:{Colors.RESET} {status_text}")
+                print(f"  {Colors.HEADER}Your question:{Colors.RESET} {Colors.QUESTION}{result.question.question}{Colors.RESET}")
+                print(f"  {Colors.HEADER}Your answer:{Colors.RESET} {Colors.ANSWER}{result.question.answer}{Colors.RESET}")
+                print(f"  {Colors.HEADER}AI's answer:{Colors.RESET} {Colors.AI_RESPONSE}{result.llm_answer}{Colors.RESET}")
+                print(f"  {Colors.HEADER}Evaluation:{Colors.RESET} {Colors.EVALUATION}{result.evaluation_explanation}{Colors.RESET}")
             else:
-                print(f"Question {result.question.number}: ⚠️ Invalid")
-                print(f"  Your question: {result.question.question}")
-                print(f"  Issue: {result.error}")
+                print(f"{Colors.HEADER}Question {result.question.number}:{Colors.RESET} {Colors.INVALID}⚠️ Invalid{Colors.RESET}")
+                print(f"  {Colors.HEADER}Your question:{Colors.RESET} {Colors.QUESTION}{result.question.question}{Colors.RESET}")
+                print(f"  {Colors.HEADER}Issue:{Colors.RESET} {Colors.ERROR}{result.error}{Colors.RESET}")
             print()
         
         # Display concise revision guidance only if questions need improvement

@@ -162,16 +162,21 @@ class DSPyQuizChallenge:
                 return None
             
             combined_content = []
+            print(f"Loading {len(urls)} context URL(s)...")
+            
             for i, url in enumerate(urls, 1):
                 try:
+                    print(f"  Fetching {i}/{len(urls)}: {url}")
                     req = urllib.request.Request(url, headers={'User-Agent': 'llm-quiz-challenge'})
                     with urllib.request.urlopen(req, timeout=30) as response:
                         content = response.read().decode('utf-8')
                         filename = url.split('/')[-1] if '/' in url else f"content_{i}"
                         combined_content.append(f"# {filename} (from {url})\n\n{content}")
                         logger.info(f"Loaded content from {url}")
+                        print(f"  ✓ Loaded {len(content)} characters")
                 except Exception as e:
                     logger.error(f"Error loading {url}: {e}")
+                    print(f"  ✗ Failed to load: {e}")
             
             if combined_content:
                 return "\n\n" + "="*80 + "\n\n".join(combined_content)
