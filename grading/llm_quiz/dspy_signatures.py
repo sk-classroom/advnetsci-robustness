@@ -15,7 +15,7 @@ class ValidationIssue(str, Enum):
     HEAVY_MATH = "heavy_math"
     PROMPT_INJECTION = "prompt_injection"
     ANSWER_QUALITY = "answer_quality"
-    CONTEXT_MISMATCH = "context_mismatch"
+    CONTEXT_MISMATCH = "context_mismatch"  # Only use when question is completely unrelated to course topic
 
 
 class ParseQuestionAndAnswer(dspy.Signature):
@@ -29,7 +29,12 @@ class ParseQuestionAndAnswer(dspy.Signature):
 
 
 class ValidateQuestion(dspy.Signature):
-    """Validate a student's quiz question and their provided correct answer."""
+    """Validate a student's quiz question and their provided correct answer.
+    
+    Questions should be considered valid if they are generally relevant to the course topic 
+    (network science, small-world networks, etc.) even if they don't reference specific 
+    details from the context. Only flag context_mismatch if the question is completely 
+    unrelated to the course subject matter."""
     
     question: str = dspy.InputField(desc="The student's quiz question to validate")
     answer: str = dspy.InputField(desc="The student's provided correct answer")
