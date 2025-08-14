@@ -22,13 +22,13 @@ except ImportError:
 try:
     from .dspy_signatures import (
         ParseQuestionAndAnswer, ValidateQuestion, AnswerQuizQuestion, 
-        EvaluateAnswer, GenerateFeedback, ValidationIssue
+        EvaluateAnswer, GenerateFeedback, GenerateRevisionGuidance, ValidationIssue
     )
 except ImportError:
     # Handle relative import for standalone execution
     from dspy_signatures import (
         ParseQuestionAndAnswer, ValidateQuestion, AnswerQuizQuestion, 
-        EvaluateAnswer, GenerateFeedback, ValidationIssue
+        EvaluateAnswer, GenerateFeedback, GenerateRevisionGuidance, ValidationIssue
     )
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,17 @@ class QuizQuestion:
 
 
 @dataclass
+class RevisionGuidance:
+    """Detailed revision guidance for a question."""
+    revision_priority: str
+    specific_issues: List[str]
+    concrete_suggestions: List[str]
+    example_improvements: List[str]
+    difficulty_adjustment: str
+    context_alignment: str
+
+
+@dataclass
 class QuizResult:
     """Result for a single question."""
     question: QuizQuestion
@@ -51,6 +62,9 @@ class QuizResult:
     student_wins: bool
     evaluation_explanation: str
     validation_issues: List[str]
+    revision_guidance: Optional[RevisionGuidance] = None
+    difficulty_assessment: Optional[str] = None
+    improvement_suggestions: List[str] = None
     error: Optional[str] = None
 
 
@@ -96,6 +110,7 @@ class DSPyQuizChallenge:
         self.question_answerer = dspy.ChainOfThought(AnswerQuizQuestion)
         self.answer_evaluator = dspy.ChainOfThought(EvaluateAnswer)
         self.feedback_generator = dspy.ChainOfThought(GenerateFeedback)
+        self.revision_guide_generator = dspy.ChainOfThought(GenerateRevisionGuidance)
         
         logger.info(f"DSPy Quiz Challenge initialized with models: quiz={quiz_model}, evaluator={evaluator_model}")
     
@@ -165,6 +180,11 @@ class DSPyQuizChallenge:
         
         return None
     
+    def _extract_context_topics(self) -> List[str]:
+        """Extract main topics from context content for better revision guidance."""
+        # Simplified - let the LLM figure out the topics from the context
+        return []
+    
     def load_quiz_from_file(self, quiz_file: Path) -> List[QuizQuestion]:
         """Load quiz from TOML file."""
         try:
@@ -207,6 +227,42 @@ class DSPyQuizChallenge:
             logger.error(f"Error parsing raw input: {e}")
             raise
     
+    def _generate_revision_guidance(self, question: QuizQuestion, validation_result: Any, 
+                                  llm_response: Optional[str] = None, 
+                                  evaluation_result: Optional[Any] = None) -> RevisionGuidance:
+        """Generate detailed revision guidance for a question."""
+        try:
+            context_topics = self._extract_context_topics()
+            
+            guidance = self.revision_guide_generator(
+                question=question.question,
+                answer=question.answer,
+                validation_issues=[issue.value for issue in validation_result.issues] if hasattr(validation_result, 'issues') else [],
+                llm_response=llm_response,
+                evaluation_result=evaluation_result.explanation if evaluation_result else None,
+                context_topics=context_topics
+            )
+            
+            return RevisionGuidance(
+                revision_priority=guidance.revision_priority,
+                specific_issues=guidance.specific_issues,
+                concrete_suggestions=guidance.concrete_suggestions,
+                example_improvements=guidance.example_improvements,
+                difficulty_adjustment=guidance.difficulty_adjustment,
+                context_alignment=guidance.context_alignment
+            )
+        except Exception as e:
+            logger.error(f"Error generating revision guidance: {e}")
+            # Provide basic fallback guidance
+            return RevisionGuidance(
+                revision_priority="MEDIUM",
+                specific_issues=["Unable to generate detailed analysis"],
+                concrete_suggestions=["Review the question against the provided context materials"],
+                example_improvements=["Make the question more specific to the course topics"],
+                difficulty_adjustment="Ensure the question requires deep understanding rather than memorization",
+                context_alignment="Align the question with the provided context materials"
+            )
+    
     def run_quiz_challenge(self, questions: List[QuizQuestion], quiz_title: str = "Quiz Challenge") -> QuizResults:
         """Run the complete quiz challenge using DSPy structured output."""
         logger.info(f"Starting DSPy quiz challenge with {len(questions)} questions")
@@ -230,6 +286,9 @@ class DSPyQuizChallenge:
                 )
                 logger.debug(f"Validation result: valid={validation.is_valid}, reason={validation.reason}")
                 
+                # Generate revision guidance for all questions (valid or invalid)
+                revision_guidance = self._generate_revision_guidance(question, validation)
+                
                 if not validation.is_valid:
                     logger.warning(f"Question {question.number} failed validation: {validation.reason}")
                     all_validation_issues.extend([issue.value for issue in validation.issues])
@@ -241,6 +300,9 @@ class DSPyQuizChallenge:
                         student_wins=False,
                         evaluation_explanation=f"Invalid question: {validation.reason}",
                         validation_issues=[issue.value for issue in validation.issues],
+                        revision_guidance=revision_guidance,
+                        difficulty_assessment=validation.difficulty_assessment,
+                        improvement_suggestions=validation.revision_suggestions,
                         error=validation.reason
                     )
                     question_results.append(result)
@@ -273,13 +335,19 @@ class DSPyQuizChallenge:
                 else:
                     llm_wins += 1
                 
+                # Generate revision guidance for valid questions too
+                revision_guidance = self._generate_revision_guidance(question, validation, llm_response.answer, evaluation)
+                
                 result = QuizResult(
                     question=question,
                     llm_answer=llm_response.answer,
                     is_valid=True,
                     student_wins=evaluation.student_wins,
                     evaluation_explanation=evaluation.explanation,
-                    validation_issues=[]
+                    validation_issues=[],
+                    revision_guidance=revision_guidance,
+                    difficulty_assessment=validation.difficulty_assessment,
+                    improvement_suggestions=evaluation.improvement_suggestions
                 )
                 question_results.append(result)
                 

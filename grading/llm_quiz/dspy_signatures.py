@@ -39,6 +39,8 @@ class ValidateQuestion(dspy.Signature):
     issues: List[ValidationIssue] = dspy.OutputField(desc="List of specific validation issues found")
     confidence: Literal["HIGH", "MEDIUM", "LOW"] = dspy.OutputField(desc="Confidence in validation decision")
     reason: str = dspy.OutputField(desc="Brief explanation of the validation decision")
+    revision_suggestions: List[str] = dspy.OutputField(desc="Specific suggestions for improving the question if invalid")
+    difficulty_assessment: Literal["TOO_EASY", "APPROPRIATE", "TOO_HARD"] = dspy.OutputField(desc="Assessment of question difficulty level")
 
 
 class AnswerQuizQuestion(dspy.Signature):
@@ -61,6 +63,25 @@ class EvaluateAnswer(dspy.Signature):
     student_wins: bool = dspy.OutputField(desc="True if student wins (LLM got it wrong), False if LLM correct")
     explanation: str = dspy.OutputField(desc="Brief explanation of the evaluation decision and reasoning")
     confidence: Literal["HIGH", "MEDIUM", "LOW"] = dspy.OutputField(desc="Confidence level in the evaluation")
+    improvement_suggestions: List[str] = dspy.OutputField(desc="Suggestions for making the question more challenging if LLM answered correctly")
+
+
+class GenerateRevisionGuidance(dspy.Signature):
+    """Generate detailed revision guidance for quiz questions that need improvement."""
+    
+    question: str = dspy.InputField(desc="The original question")
+    answer: str = dspy.InputField(desc="The student's provided answer")
+    validation_issues: List[str] = dspy.InputField(desc="Issues found during validation")
+    llm_response: Optional[str] = dspy.InputField(desc="LLM's answer if question was processed")
+    evaluation_result: Optional[str] = dspy.InputField(desc="Evaluation result if question was processed")
+    context_topics: List[str] = dspy.InputField(desc="Main topics covered in the context materials")
+    
+    revision_priority: Literal["HIGH", "MEDIUM", "LOW"] = dspy.OutputField(desc="Priority level for revising this question")
+    specific_issues: List[str] = dspy.OutputField(desc="Detailed list of specific problems with the question")
+    concrete_suggestions: List[str] = dspy.OutputField(desc="Step-by-step suggestions for improvement")
+    example_improvements: List[str] = dspy.OutputField(desc="Concrete examples of how to rewrite parts of the question")
+    difficulty_adjustment: str = dspy.OutputField(desc="How to adjust difficulty level appropriately")
+    context_alignment: str = dspy.OutputField(desc="How to better align question with provided context materials")
 
 
 class GenerateFeedback(dspy.Signature):
