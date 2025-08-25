@@ -303,11 +303,8 @@ def _(mo):
 @app.cell
 def _():
     # All imports in one place to avoid conflicts
-    import numpy as np
-    import igraph
     import altair as alt
-    import pandas as pd
-    return alt, igraph, np, pd
+    return alt
 
 
 @app.cell(hide_code=True)
