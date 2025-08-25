@@ -2,3 +2,5 @@ for_instructor/assignment_teacher.*
 assignment_teacher.py
 grading/assignment.py
 __pycache__
+*.zip
+London_Transport_Data
