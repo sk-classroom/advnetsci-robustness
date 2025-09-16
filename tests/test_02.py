@@ -3,6 +3,8 @@
 # dependencies = [
 #     "numpy>=1.20.0",
 #     "python-igraph>=0.11.0",
+#     "pandas==2.3.1",
+#     "scipy",
 #     "requests>=2.31.0",
 #     "marimo",
 # ]
