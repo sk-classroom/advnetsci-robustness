@@ -7,7 +7,7 @@ base_url = "https://openrouter.ai/api/v1"
 
 [models]
 # Model configuration - choose models that support structured outputs
-quiz_model = "openrouter/google/gemma-3-4b-it"        # Model for answering questions
+quiz_model = "openrouter/google/gemma-3-12b-it"        # Model for answering questions
 evaluator_model = "openrouter/google/gemini-2.5-flash-lite"        # Model for evaluating answers (needs structured output support)
 
 [parameters]
