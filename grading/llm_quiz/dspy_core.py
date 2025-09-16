@@ -24,6 +24,7 @@ except ImportError:
 try:
     from .dspy_signatures import (
         AnswerQuizQuestion,
+        CheckContextAlignment,
         EvaluateAnswer,
         GenerateFeedback,
         GenerateRevisionGuidance,
@@ -36,6 +37,7 @@ except ImportError:
     # Handle relative import for standalone execution
     from dspy_signatures import (
         AnswerQuizQuestion,
+        CheckContextAlignment,
         EvaluateAnswer,
         GenerateFeedback,
         GenerateRevisionGuidance,
@@ -86,6 +88,8 @@ class QuizResult:
     difficulty_assessment: Optional[str] = None  # Assessment of question difficulty
     improvement_suggestions: List[str] = None  # Suggestions for improving student's question
     clarity_score: Optional[str] = None  # Assessment of question clarity
+    student_answer_correctness: Optional[str] = None  # Correctness of student's answer
+    factual_issues: List[str] = None  # Factual errors found in answers
     error: Optional[str] = None
 
 
@@ -120,6 +124,8 @@ class DSPyQuizChallenge:
         context_content: Optional[str] = None,
         enable_detailed_feedback: bool = False,
         dspy_lm: Optional[dspy.LM] = None,
+        context_strictness: str = "normal",
+        verify_student_answers: bool = True,
     ):
         """Initialize the DSPy-based quiz challenge system."""
 
@@ -144,9 +150,12 @@ class DSPyQuizChallenge:
 
         # Store configuration
         self.enable_detailed_feedback = enable_detailed_feedback
+        self.context_strictness = context_strictness  # "strict", "normal", or "lenient"
+        self.verify_student_answers = verify_student_answers  # Enable fact-checking of student answers
 
         # Initialize DSPy predictors - they will use the context when called
         self.question_parser = dspy.Predict(ParseQuestionAndAnswer)
+        self.context_alignment_checker = dspy.ChainOfThought(CheckContextAlignment)
         self.question_validator = dspy.ChainOfThought(ValidateQuestion)
         self.similarity_validator = dspy.ChainOfThought(ValidateQuestionSimilarity)
         self.question_answerer = dspy.Predict(AnswerQuizQuestion)
@@ -155,7 +164,7 @@ class DSPyQuizChallenge:
         self.revision_guide_generator = dspy.Predict(GenerateRevisionGuidance)
 
         logger.info(
-            f"DSPy Quiz Challenge initialized with models: quiz={quiz_model}, evaluator={evaluator_model}"
+            f"DSPy Quiz Challenge initialized with models: quiz={quiz_model}, evaluator={evaluator_model}, context_strictness={context_strictness}"
         )
 
     def _create_dspy_lm(self):
@@ -231,6 +240,64 @@ class DSPyQuizChallenge:
         """Extract main topics from context content for better revision guidance."""
         # Simplified - let the LLM figure out the topics from the context
         return []
+    
+    def _check_context_alignment(self, question: QuizQuestion) -> Optional[Dict[str, Any]]:
+        """Check if a question aligns with the provided context materials.
+        
+        Returns:
+            Dictionary with alignment details or None if no context available
+        """
+        if not self.context_content:
+            logger.debug("No context content available, skipping alignment check")
+            return None
+            
+        try:
+            logger.debug(f"Checking context alignment for question {question.number}")
+            with dspy.context(lm=self.lm):
+                alignment_result = self.context_alignment_checker(
+                    question=question.question,
+                    answer=question.answer,
+                    context_content=self.context_content
+                )
+            
+            if alignment_result is None:
+                logger.warning("Context alignment checker returned None")
+                return None
+                
+            alignment_type = getattr(alignment_result, 'alignment_type', 'UNKNOWN')
+            is_substantial_deviation = getattr(alignment_result, 'is_substantial_deviation', False)
+            
+            # Apply strictness levels
+            should_flag_mismatch = False
+            should_flag_weak_alignment = False
+            
+            if self.context_strictness == "strict":
+                # Only DIRECT alignment is acceptable
+                should_flag_mismatch = alignment_type in ["TANGENTIAL", "UNRELATED"]
+                should_flag_weak_alignment = alignment_type == "EXTENSION"
+            elif self.context_strictness == "normal":
+                # DIRECT and EXTENSION are acceptable
+                should_flag_mismatch = alignment_type == "UNRELATED"
+                should_flag_weak_alignment = alignment_type == "TANGENTIAL"
+            else:  # lenient
+                # DIRECT, EXTENSION, and TANGENTIAL are acceptable
+                should_flag_mismatch = alignment_type == "UNRELATED"
+                should_flag_weak_alignment = False
+            
+            return {
+                'alignment_type': alignment_type,
+                'is_substantial_deviation': is_substantial_deviation,
+                'should_flag_mismatch': should_flag_mismatch,
+                'should_flag_weak_alignment': should_flag_weak_alignment,
+                'reasoning': getattr(alignment_result, 'reasoning', ''),
+                'context_topics': getattr(alignment_result, 'context_topics', []),
+                'question_topics': getattr(alignment_result, 'question_topics', []),
+                'suggestions': getattr(alignment_result, 'suggestions', [])
+            }
+            
+        except Exception as e:
+            logger.error(f"Error checking context alignment: {e}")
+            return None
 
     def _validate_question_similarity(self, questions: List[QuizQuestion]) -> Dict[str, Any]:
         """Validate questions for similarity and overlap."""
@@ -492,6 +559,18 @@ class DSPyQuizChallenge:
             logger.info(f"Processing question {question.number}: {question.question[:50]}...")
 
             try:
+                # Step 0.5: Check context alignment first (if context is available)
+                alignment_info = None
+                if self.context_content:
+                    pbar.set_description(f"Q{question.number}: Checking context alignment")
+                    alignment_info = self._check_context_alignment(question)
+                    if alignment_info:
+                        logger.debug(
+                            f"Context alignment: type={alignment_info['alignment_type']}, "
+                            f"flag_mismatch={alignment_info['should_flag_mismatch']}, "
+                            f"flag_weak={alignment_info['should_flag_weak_alignment']}"
+                        )
+                
                 # Step 1: Validate the student's question using DSPy
                 pbar.set_description(f"Q{question.number}: Validating question")
                 logger.debug(f"Validating student's question {question.number} with DSPy...")
@@ -516,16 +595,39 @@ class DSPyQuizChallenge:
                 revision_guidance = None
                 pbar.update(1)  # Step 2 complete
 
+                # Merge alignment issues with validation issues
                 is_valid = getattr(validation, 'is_valid', False)
+                issues = list(getattr(validation, 'issues', []))
+                
+                # Add alignment-based issues if needed
+                if alignment_info:
+                    if alignment_info['should_flag_mismatch']:
+                        issues.append(ValidationIssue.CONTEXT_MISMATCH)
+                        is_valid = False
+                        logger.info(f"Question {question.number} flagged for context mismatch (alignment: {alignment_info['alignment_type']})")
+                    elif alignment_info['should_flag_weak_alignment']:
+                        issues.append(ValidationIssue.WEAK_CONTEXT_ALIGNMENT)
+                        # Don't invalidate for weak alignment, just flag it
+                        logger.info(f"Question {question.number} flagged for weak context alignment (alignment: {alignment_info['alignment_type']})")
+                
                 if not is_valid:
                     pbar.set_description(f"Q{question.number}: Question invalid, skipping")
                     reason = getattr(validation, 'reason', 'Unknown validation error')
+                    
+                    # Add alignment reasoning if it was the cause
+                    if alignment_info and alignment_info['should_flag_mismatch']:
+                        reason = f"Context mismatch ({alignment_info['alignment_type']}): {alignment_info['reasoning']}"
+                    
                     logger.warning(
                         f"Student's question {question.number} failed validation: {reason}"
                     )
-                    issues = getattr(validation, 'issues', [])
                     all_validation_issues.extend([issue.value if hasattr(issue, 'value') else str(issue) for issue in issues])
 
+                    # Include alignment suggestions if available
+                    improvement_suggestions = list(getattr(validation, 'revision_suggestions', []))
+                    if alignment_info and alignment_info.get('suggestions'):
+                        improvement_suggestions.extend(alignment_info['suggestions'])
+                    
                     result = QuizResult(
                         question=question,
                         llm_answer="Question rejected during validation",
@@ -535,7 +637,7 @@ class DSPyQuizChallenge:
                         validation_issues=[issue.value if hasattr(issue, 'value') else str(issue) for issue in issues],
                         revision_guidance=revision_guidance,
                         difficulty_assessment=getattr(validation, 'difficulty_assessment', 'APPROPRIATE'),
-                        improvement_suggestions=getattr(validation, 'revision_suggestions', []),
+                        improvement_suggestions=improvement_suggestions,
                         clarity_score=getattr(validation, 'clarity_score', None),
                         error=reason,
                     )
@@ -582,9 +684,21 @@ class DSPyQuizChallenge:
                     raise ValueError("Answer evaluator returned None")
 
                 verdict = getattr(evaluation, 'verdict', 'INCORRECT')
+                student_answer_correctness = getattr(evaluation, 'student_answer_correctness', 'CORRECT')
                 student_won_this_question = getattr(evaluation, 'student_wins', False)
+                factual_issues = getattr(evaluation, 'factual_issues', [])
+                
+                # Apply fact-checking logic if enabled
+                if self.verify_student_answers:
+                    # Student can only win if their answer is correct
+                    if student_answer_correctness != 'CORRECT':
+                        student_won_this_question = False
+                        logger.info(f"Question {question.number}: Student's answer is {student_answer_correctness}, cannot win")
+                        if factual_issues:
+                            logger.info(f"Factual issues found: {', '.join(factual_issues)}")
+                
                 logger.debug(
-                    f"Evaluation: verdict={verdict}, student_wins={student_won_this_question}"
+                    f"Evaluation: LLM verdict={verdict}, student_answer={student_answer_correctness}, student_wins={student_won_this_question}"
                 )
                 pbar.update(1)  # Step 4 complete
 
@@ -592,6 +706,9 @@ class DSPyQuizChallenge:
                 if student_won_this_question:
                     student_wins += 1
                     pbar.set_description(f"Q{question.number}: Complete - Student wins!")
+                elif student_answer_correctness != 'CORRECT' and self.verify_student_answers:
+                    # Student's answer is incorrect - neither wins
+                    pbar.set_description(f"Q{question.number}: Complete - Student answer incorrect")
                 else:
                     llm_wins += 1
                     pbar.set_description(f"Q{question.number}: Complete - LLM wins")
@@ -599,17 +716,24 @@ class DSPyQuizChallenge:
                 # Skip revision guidance generation completely
                 revision_guidance = None
 
+                # Include any non-blocking alignment issues  
+                non_blocking_issues = []
+                if alignment_info and alignment_info.get('should_flag_weak_alignment'):
+                    non_blocking_issues.append(ValidationIssue.WEAK_CONTEXT_ALIGNMENT.value)
+                
                 result = QuizResult(
                     question=question,
                     llm_answer=llm_answer,
                     is_valid=True,
                     student_wins=student_won_this_question,
                     evaluation_explanation=getattr(evaluation, 'explanation', 'No explanation available'),
-                    validation_issues=[],
+                    validation_issues=non_blocking_issues,
                     revision_guidance=revision_guidance,
                     difficulty_assessment=getattr(validation, 'difficulty_assessment', 'APPROPRIATE'),
                     improvement_suggestions=getattr(evaluation, 'improvement_suggestions', []),
                     clarity_score=getattr(validation, 'clarity_score', None),
+                    student_answer_correctness=student_answer_correctness,
+                    factual_issues=factual_issues,
                 )
                 question_results.append(result)
                 pbar.update(1)  # Step 5 complete
@@ -690,10 +814,20 @@ class DSPyQuizChallenge:
             # Simple feedback for fast mode
             if evaluated_questions == 0:
                 feedback_summary = "No questions were successfully processed. Please check your quiz format and try again."
-            elif student_wins == 0:
-                feedback_summary = "The AI answered your question correctly. Try creating a more challenging question!"
             else:
-                feedback_summary = f"Great job! You stumped the AI. Your question was challenging enough that the AI got it wrong."
+                # Count questions with incorrect student answers
+                incorrect_answer_count = 0
+                if self.verify_student_answers:
+                    for result in question_results:
+                        if result.is_valid and result.student_answer_correctness == 'INCORRECT':
+                            incorrect_answer_count += 1
+                
+                if incorrect_answer_count > 0:
+                    feedback_summary = f"⚠️ Warning: {incorrect_answer_count} of your answers were factually incorrect. Review the factual issues identified and correct your understanding before resubmitting."
+                elif student_wins == 0:
+                    feedback_summary = "The AI answered your question correctly. Try creating a more challenging question!"
+                else:
+                    feedback_summary = f"Great job! You stumped the AI. Your question was challenging enough that the AI got it wrong."
 
         return QuizResults(
             quiz_title=quiz_title,

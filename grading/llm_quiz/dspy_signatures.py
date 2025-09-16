@@ -48,13 +48,13 @@ class ValidateQuestion(dspy.Signature):
     """Validate a student's quiz question and their provided correct answer.
 
     CONTENT ALIGNMENT REQUIREMENTS:
-    - Flag context_mismatch if the question is about topics or concepts that are NOT covered in the provided context materials
-    - Flag context_mismatch if the question asks about concepts from a different module or subject area than what's provided in the context
-    - Flag weak_context_alignment if the question is only tangentially related to the provided context materials
-    - Questions should demonstrate understanding of concepts that are explicitly covered in the provided context materials
-    - Questions may explore implications, limitations, or extensions of core concepts ONLY if they stem directly from the provided context
-    - REQUIRE that questions be answerable using the provided context materials
-    - CAREFULLY CHECK if the question topic matches the subject matter in the provided context
+    - Flag context_mismatch ONLY for questions about completely UNRELATED topics not covered in context
+      Example: Context about Euler paths, question about spectral clustering = context_mismatch
+    - DO NOT flag context_mismatch for questions that extend or apply concepts from the context
+      Example: Context about node degree, question about self-loops in degree calculation = acceptable extension
+    - Flag weak_context_alignment if the question is tangentially related but requires substantial external knowledge
+    - Questions may explore implications, edge cases, or applications of concepts if they can be reasoned from context
+    - DISTINGUISH between "different topic" (mismatch) vs "derived application" (acceptable)
     
     CLARITY AND SPECIFICITY REQUIREMENTS:
     - Flag vague_question if the question lacks specificity or is too general
@@ -101,6 +101,55 @@ class AnswerQuizQuestion(dspy.Signature):
     )
 
 
+class CheckContextAlignment(dspy.Signature):
+    """Check if a quiz question aligns with the provided context materials.
+    
+    This validator determines whether a question substantially deviates from the context
+    or is a reasonable extension/application of the concepts presented.
+    
+    ALIGNMENT CATEGORIES:
+    - DIRECT: Question directly tests concepts explicitly covered in the context
+    - EXTENSION: Question asks about implications, applications, or derived knowledge that can be reasoned from the context
+    - TANGENTIAL: Question is loosely related but requires significant external knowledge
+    - UNRELATED: Question is about completely different topics (substantial deviation)
+    
+    EXAMPLES OF ACCEPTABLE (DIRECT or EXTENSION):
+    - Context: "Node degree is the number of edges connected to a node"
+      Question: "How do you count degree when a node has a self-loop?" (EXTENSION - applies the concept)
+    - Context: "PageRank measures node importance based on link structure"  
+      Question: "What happens to PageRank if all nodes have equal in-degree?" (EXTENSION - explores implications)
+    
+    EXAMPLES OF UNACCEPTABLE (UNRELATED):
+    - Context: "Euler paths visit every edge exactly once"
+      Question: "How does spectral clustering partition a graph?" (UNRELATED - different topic entirely)
+    - Context: "Small-world networks have short path lengths"
+      Question: "What is the time complexity of Dijkstra's algorithm?" (UNRELATED - algorithm analysis vs network property)
+    """
+    
+    question: str = dspy.InputField(desc="The quiz question to check alignment for")
+    answer: str = dspy.InputField(desc="The provided answer (for additional context)")
+    context_content: str = dspy.InputField(desc="The course context materials")
+    
+    alignment_type: Literal["DIRECT", "EXTENSION", "TANGENTIAL", "UNRELATED"] = dspy.OutputField(
+        desc="Type of alignment between question and context"
+    )
+    is_substantial_deviation: bool = dspy.OutputField(
+        desc="True if the question is UNRELATED to context topics (substantial deviation)"
+    )
+    reasoning: str = dspy.OutputField(
+        desc="Detailed explanation of why this alignment was determined"
+    )
+    context_topics: List[str] = dspy.OutputField(
+        desc="Main topics/concepts found in the provided context"
+    )
+    question_topics: List[str] = dspy.OutputField(
+        desc="Main topics/concepts the question is asking about"
+    )
+    suggestions: List[str] = dspy.OutputField(
+        desc="If misaligned, suggestions for how to better align the question with context"
+    )
+
+
 class ValidateQuestionSimilarity(dspy.Signature):
     """Check for similarity and overlap between multiple quiz questions.
     
@@ -127,26 +176,49 @@ class ValidateQuestionSimilarity(dspy.Signature):
 
 
 class EvaluateAnswer(dspy.Signature):
-    """Evaluate an LLM's answer against the student's correct answer."""
+    """Evaluate an LLM's answer against the student's provided answer, while fact-checking both.
+    
+    IMPORTANT EVALUATION CRITERIA:
+    1. First, verify if the student's provided answer is factually correct
+    2. Then, evaluate if the LLM's answer is factually correct
+    3. Student wins ONLY if their answer is correct AND the LLM's answer is incorrect
+    4. If student's answer is factually wrong, they cannot win regardless of LLM's answer
+    
+    FACT-CHECKING GUIDELINES:
+    - Verify factual accuracy based on established knowledge
+    - Check for logical consistency in the reasoning
+    - Identify misconceptions or errors in understanding
+    - Consider if there might be multiple valid perspectives
+    
+    EXAMPLES:
+    - If student says "False" to a true statement, their answer is incorrect
+    - If student provides wrong reasoning (e.g., "depends on network size" when it actually depends on rewiring probability), mark as incorrect
+    - If both answers are correct but approach differently, both are correct"""
 
     question: str = dspy.InputField(desc="The student's quiz question")
     correct_answer: str = dspy.InputField(desc="The student's provided correct answer")
     llm_answer: str = dspy.InputField(desc="The LLM's attempt at answering the student's question")
 
     verdict: Literal["CORRECT", "INCORRECT"] = dspy.OutputField(
-        desc="Whether the LLM's answer is correct"
+        desc="Whether the LLM's answer is factually correct"
+    )
+    student_answer_correctness: Literal["CORRECT", "INCORRECT", "PARTIALLY_CORRECT"] = dspy.OutputField(
+        desc="Whether the student's provided answer is factually correct"
     )
     student_wins: bool = dspy.OutputField(
-        desc="True if student wins (LLM got it wrong), False if LLM correct"
+        desc="True if student wins (student correct AND LLM wrong), False otherwise"
     )
     explanation: str = dspy.OutputField(
-        desc="Brief explanation of the evaluation decision and reasoning"
+        desc="Detailed explanation including fact-checking of both answers"
     )
     confidence: Literal["HIGH", "MEDIUM", "LOW"] = dspy.OutputField(
         desc="Confidence level in the evaluation"
     )
+    factual_issues: List[str] = dspy.OutputField(
+        desc="List of factual errors found in either answer"
+    )
     improvement_suggestions: List[str] = dspy.OutputField(
-        desc="Suggestions for making the question more challenging if LLM answered correctly"
+        desc="Suggestions for improving the question or correcting misconceptions"
     )
 
 
