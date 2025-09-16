@@ -18,7 +18,7 @@ max_tokens = 1500                  # Maximum tokens in responses (increased from
 [context]
 # Context materials - URLs to fetch for providing context to the quiz model
 urls = [
-    "https://raw.githubusercontent.com/skojaku/adv-net-sci/refs/heads/main/docs/tutor-references/m02-concept.md",
+    "https://raw.githubusercontent.com/skojaku/adv-net-sci/refs/heads/main/docs/tutor-references/m03-concept.md",
 ]
 
 [output]
