@@ -52,9 +52,11 @@ class ValidateQuestion(dspy.Signature):
       Example: Context about Euler paths, question about spectral clustering = context_mismatch
     - DO NOT flag context_mismatch for questions that extend or apply concepts from the context
       Example: Context about node degree, question about self-loops in degree calculation = acceptable extension
+      Example: Context about MST minimizing total weight, question about whether MST minimizes average distance = acceptable extension (tests understanding using basic graph knowledge)
     - Flag weak_context_alignment if the question is tangentially related but requires substantial external knowledge
-    - Questions may explore implications, edge cases, or applications of concepts if they can be reasoned from context
-    - DISTINGUISH between "different topic" (mismatch) vs "derived application" (acceptable)
+    - Questions may explore implications, edge cases, or applications of concepts if they can be reasoned from context using basic domain knowledge
+    - Questions asking "Does X also do Y?" where X is in context and Y is a related property are acceptable if answerable with basic knowledge
+    - DISTINGUISH between "different topic" (mismatch) vs "derived application" (acceptable) vs "requires specialized knowledge" (weak alignment)
     
     CLARITY AND SPECIFICITY REQUIREMENTS:
     - Flag vague_question if the question lacks specificity or is too general
@@ -73,7 +75,7 @@ class ValidateQuestion(dspy.Signature):
 
     is_valid: bool = dspy.OutputField(desc="Whether the question is valid and acceptable")
     issues: List[ValidationIssue] = dspy.OutputField(
-        desc="List of specific validation issues found (check for context_mismatch, weak_context_alignment, vague_question, ambiguous_wording, incomplete_context). STRICTLY flag context_mismatch when the question is about topics not covered in the provided context materials. Check if the question topic matches the subject matter of the provided context."
+        desc="List of specific validation issues found (check for context_mismatch, weak_context_alignment, vague_question, ambiguous_wording, incomplete_context). Flag context_mismatch ONLY for completely UNRELATED topics. Allow questions testing understanding through related properties/metrics if answerable with basic domain knowledge. Questions asking 'Does X also do Y?' where X is in context are acceptable extensions if derivable from basic knowledge."
     )
     confidence: Literal["HIGH", "MEDIUM", "LOW"] = dspy.OutputField(
         desc="Confidence in validation decision"
