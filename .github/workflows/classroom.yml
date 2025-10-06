@@ -38,10 +38,6 @@ jobs:
         test-name: Quiz Challenge
         setup-command: echo "Environment already set up"
         command: |
-          if [ -z "${{ secrets.CHAT_API }}" ]; then
-            echo "CHAT_API secret not found"
-            exit 1
-          fi
           ./grading/run_quiz_test.sh \
             --config ./grading/config.toml \
             --quiz-file ./assignment/quiz.toml \
