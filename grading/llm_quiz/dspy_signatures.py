@@ -109,21 +109,27 @@ class CheckContextAlignment(dspy.Signature):
     
     ALIGNMENT CATEGORIES:
     - DIRECT: Question directly tests concepts explicitly covered in the context
-    - EXTENSION: Question asks about implications, applications, or derived knowledge that can be reasoned from the context
-    - TANGENTIAL: Question is loosely related but requires significant external knowledge
-    - UNRELATED: Question is about completely different topics (substantial deviation)
-    
+    - EXTENSION: Question asks about implications, applications, derived knowledge, or tests understanding by asking about RELATED properties/metrics that can be reasoned from the context using basic domain knowledge (not overly technical)
+      * Includes questions that ask if a concept does something it doesn't explicitly state (e.g., "Does X also optimize Y?" when context says "X optimizes Z")
+      * The answer may be derivable from understanding what the context DOES cover plus basic domain knowledge
+    - TANGENTIAL: Question is loosely related but requires significant specialized technical knowledge not covered in context
+    - UNRELATED: Question is about completely different topics (substantial deviation from context subject matter)
+
     EXAMPLES OF ACCEPTABLE (DIRECT or EXTENSION):
     - Context: "Node degree is the number of edges connected to a node"
       Question: "How do you count degree when a node has a self-loop?" (EXTENSION - applies the concept)
-    - Context: "PageRank measures node importance based on link structure"  
+    - Context: "PageRank measures node importance based on link structure"
       Question: "What happens to PageRank if all nodes have equal in-degree?" (EXTENSION - explores implications)
-    
-    EXAMPLES OF UNACCEPTABLE (UNRELATED):
+    - Context: "MST minimizes total edge weight"
+      Question: "Does an MST minimize average distance between all node pairs?" (EXTENSION - tests understanding by asking about a different but related metric; answerable with basic graph knowledge that minimizing total weight ≠ minimizing average distance)
+
+    EXAMPLES OF UNACCEPTABLE (TANGENTIAL or UNRELATED):
     - Context: "Euler paths visit every edge exactly once"
       Question: "How does spectral clustering partition a graph?" (UNRELATED - different topic entirely)
     - Context: "Small-world networks have short path lengths"
       Question: "What is the time complexity of Dijkstra's algorithm?" (UNRELATED - algorithm analysis vs network property)
+    - Context: "Networks can be robust or fragile"
+      Question: "Derive the eigenvalue equation for the graph Laplacian" (TANGENTIAL - requires specialized mathematical knowledge)
     """
     
     question: str = dspy.InputField(desc="The quiz question to check alignment for")
